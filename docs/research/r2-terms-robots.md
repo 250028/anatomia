@@ -22,9 +22,9 @@
 | Meta | dev.meta.ai | 要相談（不可寄り。Meta の規約は自動データ収集に書面の許可を求める） | 取れる | **要相談（不可寄り）。判断は Q-1 の答えで決まる（§4）** |
 | OpenAI | openai.com | 不可（規約が自動抽出を禁止） | ボット対策で取れない。HF・GitHub にも主力モデルの公式の値がない | **不可** |
 
-- **現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社。** うち DeepSeek・Qwen は Hugging Face の整理について先生の確認待ちなので、**先生の確認なしで取得できるのは Google だけ**。成功の定義「5 社以上」に届かせるには、下の 2 点の確認が要る
-  1. Hugging Face の整理（§4）が認められる → DeepSeek・Qwen（と Mistral の Ministral 3 系）が確定
-  2. 「消費者向け規約は公開ページの低頻度な取得にも適用されるか」（§4 の質問）が「適用されない」または「robots.txt の `Allow: /` を許可とみなせる」となる → Anthropic・xAI が加わり、Google・DeepSeek・Qwen・Anthropic・xAI の 5 社に届く
+- **現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社。** うち DeepSeek・Qwen は質問 A（Hugging Face の整理）について先生の確認待ちなので、**先生の確認なしで取得できるのは Google だけ**。成功の定義「5 社以上」に届かせるには、下の 2 点の確認が要る
+  1. 質問 A（Hugging Face の整理。§4）が認められる → DeepSeek・Qwen（と Mistral の Ministral 3 系）が確定
+  2. 質問 B（「消費者向け規約は公開ページの低頻度な取得にも適用されるか」。§4）が「適用されない」または「robots.txt の `Allow: /` を許可とみなせる」となる → Anthropic・xAI が加わり、Google・DeepSeek・Qwen・Anthropic・xAI の 5 社に届く
 - **Mistral の Ministral 3 系は、この 3 社・5 社の数に含めていない。** 小型モデルだけなので、企画書 §4-3 の「現行主力モデル」に数えるかは R-3 で判断する。数える場合は、質問 A が認められた時点で 4 社になり、質問 B で Anthropic か xAI の**どちらか 1 社**が加われば 5 社に届く
 - robots.txt だけを見ると、**どのサイトも取得先のページを禁止していない**。可否を分けているのは利用規約のほう
 
@@ -39,7 +39,7 @@
 | deepmind.google | なし（`Allow: /`） | |
 | blog.google | なし（検索ページのみ `Disallow`） | |
 | ai.meta.com | なし（`/ajax/`、`/*.php` などのみ `Disallow`） | 冒頭に「Facebook 上のデータを自動手段で収集するには、書面の許可が必要」という注意書き。`Scrapy` など一部のボットは全面禁止 |
-| developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
+| developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 初版の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
 | dev.meta.ai | なし（同上） | **Meta の取得元はここ（`https://dev.meta.ai/models/muse-spark-1-1`）に固定する。** 注意書きはなし |
 | x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］での利用を許可する宣言） |
 | mistral.ai | なし（`Allow: /`） | |
@@ -54,7 +54,7 @@
 | 企業 | 規約 | 該当条項（原文） | 読み取れること |
 | --- | --- | --- | --- |
 | Google | [Google 利用規約](https://policies.google.com/terms)「Don't abuse our services」 | "using automated means to access content from any of our services **in violation of the machine-readable instructions on our web pages (for example, robots.txt files ...)**" | **robots.txt に従う限り、自動アクセスは禁止されていない。** deepmind.google は `Allow: /` なので問題なし |
-| Hugging Face | [Terms of Service](https://huggingface.co/terms-of-service)（Effective Date: 2022-09-15）、[Content Policy](https://huggingface.co/content-policy)（規約に組み込まれた方針） | 規約：自動取得を禁止する条項はない。ただし "all of our policies available on our Website" の順守を求め、"Any Content you download, access or use from us or another User, is at your own risk and **subject to these Terms and/or the terms accompanying such Content**" とある。Content Policy には濫用の例として "Using tools like Cloudflare Tunnel, TOR, proxies, VNC, Chrome Remote Server, etc., to bypass restrictions" と "excessive bulk activity" がある | 自動取得を禁止する条項はない。**低頻度で読むだけなら当たらないが、「間隔を空け、制限を回避しない」ことを守る。§6-3 のルールを HF にも適用する。** 公開リポジトリのコンテンツを HF の機能を通じて使用・複製することを許諾する条項があり、質問 A の根拠になる。DeepSeek・Qwen・Mistral の License にも取得を制限する条件はない。全文の確認結果と各 License は §3-3 |
+| Hugging Face | [Terms of Service](https://huggingface.co/terms-of-service)（Effective Date: 2022-09-15）、[Content Policy](https://huggingface.co/content-policy)（規約に組み込まれた方針） | 規約：自動取得を禁止する条項はない。ただし "all of our policies available on our Website" の順守を求め、"Any Content you download, access or use from us or another User, is at your own risk and **subject to these Terms and/or the terms accompanying such Content**" とある。Content Policy には濫用の例として "Using tools like Cloudflare Tunnel, TOR, proxies, VNC, Chrome Remote Server, etc., to bypass restrictions" と "excessive bulk activity" がある | 自動取得を禁止する条項はない。**低頻度で読むだけなら当たらないが、「間隔を空け、制限を回避しない」ことを守る。§6-3 のルールを HF にも適用する。** 公開リポジトリのコンテンツを HF の機能を通じて使用・複製することを許諾する条項があり、質問 A の根拠になる。DeepSeek・Qwen・Mistral（確認したのは Small 4）の License にも取得を制限する条件はない。全文の確認結果と各 License は §3-3 |
 | xAI | [Terms of Service - Consumer](https://x.ai/legal/terms-of-service)（Last Updated: 2026-09-11）と、規約が取り込む [Acceptable Use Policy](https://x.ai/legal/acceptable-use-policy)（Effective: 2026-08-14） | 規約：「Service」に "associated applications, features, tools, software and websites" を含み、"By accessing and using our Service, you acknowledge and agree to these Terms and any other applicable terms and policies, including our Acceptable Use Policy." とある。AUP："applies to anyone using our Service"。禁止事項に "**Accessing the Services through unauthorized automated or non-human means, whether through a bot, script, or otherwise**" | **スクリプトでのアクセスを禁止しており、Anthropic の規約とほぼ同じ文言・構造。** 判定は Anthropic と同じ「要相談」。初版で引用した "any robot, spider, scraper ... than a human can reasonably produce ..." は現行の規約本文にないため、「人間と同程度の頻度なら禁止に当たらない」という読み方は根拠にしない。取得元の x.ai の発表記事が「本サービス」に含まれるかは、規約から読み取れない。ブラウザでの確認結果は §3-3 |
 | Anthropic | [Consumer Terms of Service](https://www.anthropic.com/legal/consumer-terms) §3（Effective: 2025-10-08） | "To **crawl, scrape, or otherwise harvest data** or information from our Services other than as permitted under these Terms."／"**Except when you are accessing our Services via an Anthropic API Key or where we otherwise explicitly permit it, to access the Services through automated or non-human means, whether through a bot, script, or otherwise.**"／"Services" = "Claude.ai, Claude Pro, and other products and services ... along with any associated apps, software, **and websites**"／"By accessing our Services, you agree to these Terms."（レビューでの確認） | **ウェブサイトのスクレイピング・スクリプトでのアクセスも禁止対象**と読める。ただしこれは Claude の利用者向けの規約で、アカウントを持たずにサイトを見るだけの人にも適用されるかははっきりしない。"explicitly permit" を robots.txt の `Allow: /` が満たすかも論点 → 要相談 |
 | Meta | [Automated Data Collection Terms](https://www.facebook.com/legal/automated_data_collection_terms)（Effective: 2024-10-07。旧 URL からのリダイレクト先） | "You will not engage in Automated Data Collection **without first obtaining Meta's express written permission**"。続きに "or in any manner that is not explicitly authorized by Meta" | **書面の許可が必要。許可があっても、収集したデータの用途は検索エンジン・URL プレビューなどに限られ、許可を得た後の義務も重い。学生のプロジェクトでは、許可の申請は現実的でない。** dev.meta.ai のモデルページのフッターの「Terms of Service」が https://www.facebook.com/policies_center/ を指しているので、Meta の規約が適用される前提で考えるのが安全（対象の「Meta Company Products」の定義に dev.meta.ai が含まれるかは未確認）。確認結果は §3-3 |
@@ -79,7 +79,7 @@
 - 質問 A を裏づける条項が 2 つある
   - 「コンテンツ」の節に、"コンテンツに合理的かつ慣習的なライセンス（オープンソースライセンスなど）の通知が含まれている場合、当該コンテンツは、その後のアクセス、配布、または使用においても、当該ライセンスの条件に従う" とある
   - 同じ節に、リポジトリを公開にすると "各ユーザーに対し、当社のサービスおよび機能を通じて、お客様のコンテンツを使用、表示、公開、複製、配布、および派生作品を作成するための、永続的、取消不能、全世界的、ロイヤリティフリー、非独占的なライセンスを付与する" とある（公開モデルカードは、HF を通じて読む・複製することが許されている）
-- モデルカードの License（追加の条件や自動取得に触れる文言は、どれもなかった）
+- モデルカードの License（自動取得に触れる文言はどれもなかった。追加の条件は、Mistral（Small 4）に「第三者の権利を侵害……使用してはなりません」の一文があるだけで、そのほかの License は一般的な条件のみ）
 
 | モデル | License | 確認した場所 |
 | --- | --- | --- |
@@ -156,7 +156,7 @@
 ## 6. この調査の限界
 
 - 法的な判断ではない。規約の文面を読んだうえでの整理
-- xAI の AUP（発効日 2026-08-14）と規約本体（最終更新 2026-09-11）は、ブラウザで現行の文面を確認した（日本語表示。英語の原文との照合は未）。前のバージョン（2026-09-01）に初版の引用があったかは未確認。OpenAI の規約は、403 のため直接は読めず、**Internet Archive の保存版**（2026-09-29 取得）で確認した
+- xAI の AUP（発効日 2026-08-14）と規約本体（最終更新 2026-09-11）は、ブラウザで現行の文面を確認した（日本語表示。規約本体の主要な文言は、レビューで英語の保存版（2026-09-28）との照合を確認済み。AUP の英語原文との照合は未）。前のバージョン（2026-09-01）に初版の引用があったかは未確認。OpenAI の規約は、403 のため直接は読めず、**Internet Archive の保存版**（2026-09-29 取得）で確認した
 - Qwen の規約（Service Agreement）は、ブラウザで本文を確認した（英語の原文）。日付と、規約が取り込む Use Policy の本文は未確認
 - Meta の自動データ収集規約（Effective October 7, 2024）は、ブラウザで本文を確認した。「Meta Company Products」の定義（Facebook 利用規約側）に dev.meta.ai が含まれるかは未確認
 - 各リポジトリの License は、Qwen が README 先頭の YAML 情報で Apache 2.0、DeepSeek が README 本文で MIT、Mistral（Small 4）が README 本文で Apache 2.0 と確認した（LICENSE ファイルは未確認）。スクリプトで取る Ministral 3 系の License は、レビューでの確認のみで、取得前に対象のリポジトリで確認する（§3-3）
