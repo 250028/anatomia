@@ -40,7 +40,7 @@
 | blog.google | なし（検索ページのみ `Disallow`） | |
 | ai.meta.com | なし（`/ajax/`、`/*.php` などのみ `Disallow`） | 冒頭に「Facebook 上のデータを自動手段で収集するには、書面の許可が必要」という注意書き。`Scrapy` など一部のボットは全面禁止 |
 | developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 初版の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
-| dev.meta.ai | なし（同上） | **Meta の取得元はここ（`https://dev.meta.ai/models/muse-spark-1-1`）に固定する。** 注意書きはなし |
+| dev.meta.ai | なし（同上） | **Meta の取得元はここ（`https://dev.meta.ai/models/muse-spark-1-1`）に固定する。** robots.txt の注意書きはなし。ページの「利用規約」リンクは Facebook 利用規約に遷移する（§3-3） |
 | x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］での利用を許可する宣言） |
 | mistral.ai | なし（`Allow: /`） | |
 | huggingface.co | なし（`User-agent: *` / `Allow: /` のみ。`/api/`・`/raw/`・`/resolve/` への `Disallow` もない） | |
@@ -120,9 +120,9 @@
 - **許可があっても、収集したデータの用途は「検索エンジンの結果の提供」か「Meta の URL のプレビュー表示」、または別途の書面の許可を得た用途に限られる**（§4）。ベンチマークの比較表への利用は、このどちらにも当たらない
 - 許可を得る場合の義務が重い（プライバシー・セキュリティのプログラムの整備、Meta による監査・レビュー、補償など。§4〜§6）
 - robots.txt の順守、自社を識別できる IP アドレス・User-Agent の使用も求められる（§4）
-- **残る論点**：対象の「Meta Company Products」は Facebook 利用規約の定義に委ねられており（本文には定義がない）、dev.meta.ai が含まれるかは**未確認**。なお、初版の「Facebook・Instagram 以外も含むと書かれている」は、この規約の本文にはなく、Facebook 利用規約側の定義の話
+- **残る論点**：対象の「Meta Company Products」は Facebook 利用規約の定義に委ねられており（本文には定義がない）、dev.meta.ai が含まれるかは、下の Facebook 利用規約の確認結果を参照。なお、初版の「Facebook・Instagram 以外も含むと書かれている」は、この規約の本文にはなく、Facebook 利用規約側の定義の話
 - **Facebook 利用規約（2025-01-01 適用。貼り付けた日本語版）の確認結果**
-  - 適用範囲：冒頭に「Facebook、Messenger、弊社が提供するその他の製品、**ウェブサイト**、機能、アプリ、サービス、技術、およびソフトウェア」とあり、文面上は dev.meta.ai も含まれうる。ただし「Meta 社製品」の定義ページはリンクが貼り付けに残っておらず読めていないので、含まれると断定はしない
+  - 適用範囲：冒頭に「Facebook、Messenger、弊社が提供するその他の製品、**ウェブサイト**、機能、アプリ、サービス、技術、およびソフトウェア」とあり、文面上は dev.meta.ai も含まれうる。さらに、dev.meta.ai の Muse Spark 1.3 のページで「利用規約」のリンクを開くと、この Facebook 利用規約に遷移した（ブラウザでの確認。ページ側に別の規約はない）。**dev.meta.ai は、この規約の対象と見てよい**。「Meta 社製品」の定義ページは、リンクが貼り付けに残っておらず読めていない
   - §3.2-3：「弊社から事前の許可を得ることなく、自動化手段を用いて弊社製品のデータにアクセスしたり、データを取得したりすること」を禁止。Facebook アカウントにログインしているかどうかは問わない。ログインなしでも適用される書き方で、Anthropic・xAI と同じ論点（質問 B）になる
   - §3.2-7：アクセスを制御・制限するための技術的措置の回避を禁止
   - 判定は「要相談（不可寄り）」のまま。自動データ収集規約に加えて、利用規約本体にも自動取得の禁止がある。手入力なら Q-1 の答えで決まる点も変わらない
@@ -163,7 +163,7 @@
 - 法的な判断ではない。規約の文面を読んだうえでの整理
 - xAI の AUP（発効日 2026-08-14）と規約本体（最終更新 2026-09-11）は、ブラウザで現行の文面を確認した（日本語表示。規約本体の主要な文言は、レビューで英語の保存版（2026-09-28）との照合を確認済み。AUP の英語原文との照合は未）。前のバージョン（2026-09-01）に初版の引用があったかは未確認。OpenAI の規約は、403 のため直接は読めず、**Internet Archive の保存版**（2026-09-29 取得）で確認した
 - Qwen の規約（Service Agreement）は、ブラウザで本文を確認した（英語の原文）。日付と、規約が取り込む Use Policy の本文は未確認
-- Meta の自動データ収集規約（Effective October 7, 2024）は、ブラウザで本文を確認した。「Meta Company Products」の定義（Facebook 利用規約側）に dev.meta.ai が含まれるかは未確認。Facebook 利用規約（2025-01-01 適用の日本語版）は貼り付けで確認したが、最新版かどうかと「Meta 社製品」の定義ページは未確認
+- Meta の自動データ収集規約（Effective October 7, 2024）は、ブラウザで本文を確認した。Facebook 利用規約（2025-01-01 適用の日本語版）は貼り付けで確認した。dev.meta.ai のページの「利用規約」リンクがこの規約に遷移することも確認した。最新版かどうかと、「Meta 社製品」の定義ページは未確認
 - 各リポジトリの License は、Qwen が README 先頭の YAML 情報で Apache 2.0、DeepSeek が README 本文で MIT、Mistral（Small 4）が README 本文で Apache 2.0 と確認した（LICENSE ファイルは未確認）。スクリプトで取る Ministral 3 系の License は、レビューでの確認のみで、取得前に対象のリポジトリで確認する（§3-3）
 - Hugging Face の規約は、HTML 本文の語の検索（「scrape / crawl / robot / bot / spider / harvest / extract / mining / rate / API」など）と、ブラウザでの全文確認（日本語表示）の両方で、自動取得を禁止する条項が見当たらないことを確認した。補足規約（Supplemental Terms）と Content Policy の本文は未確認
 - 規約は予告なく改定される（Mistral・OpenAI・xAI は直近数か月〜数週間以内に改定されている）。実際に取得を始める前に再確認する
