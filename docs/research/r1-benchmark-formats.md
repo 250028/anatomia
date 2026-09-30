@@ -36,8 +36,8 @@
 | Google | Gemini 3.8 Flash、3.5 Flash など | [ブログ（3.5 / 3.8 Flash）](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/) | 画像（本文に一部数値あり） | × | — | ブログは不可 |
 | | | [DeepMind モデルカード（3.5 Flash）](https://deepmind.google/models/model-cards/gemini-3-5-flash/) | HTML表（測定条件の列あり） | ○ | あり | **取得可** |
 | | | [DeepMind モデルカード（3.8 Flash）](https://deepmind.google/models/model-cards/gemini-3-8-flash/) | HTML表（レビューでの確認） | ○ | あり | **取得可** |
-| Meta | Muse Spark 1.1 / 1.2 | [AI at Meta ブログ](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) | 画像。curl では 400 エラー | × | — | ブログは不可 |
-| | | [Meta for Developers モデルページ](https://dev.meta.ai/models/muse-spark-1-1) | HTML(div) | ○ | 一部（「w/ tools」など） | **取得可**（取得元は dev.meta.ai に固定。旧 URL の developer.meta.com は dev.meta.ai へ 302・308 でリダイレクトされる） |
+| Meta | Muse Spark 1.3（最新。レビューでの確認） | [AI at Meta ブログ](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) | 画像。curl では 400 エラー | × | — | ブログは不可 |
+| | | [Meta for Developers モデルページ](https://dev.meta.ai/models/muse-spark/) | HTML(div) | ○ | 一部（「w/ tools」など） | **取得可**（取得元は dev.meta.ai に固定。旧 URL の developer.meta.com は dev.meta.ai へ 302・308 でリダイレクトされる） |
 | xAI | Grok 4.7 | [発表記事](https://x.ai/news/grok-4-7) | HTML(div) | ○ | あり（注記・アスタリスク） | **取得可** |
 | | | [モデルカード PDF](https://media.x.ai/v1/website/4p7card-5eccc980.pdf) | PDF（テキスト形式、グラフはベクター） | △ | — | 本文の文字の符号化が特殊で、簡易抽出では読めない。R-9 で要検証 |
 | Mistral AI | Mistral Small 4、Mistral Large 3、Mistral Medium 3.5（Medium 3.5 はレビューで追加。README に "Mistral Medium 3.5 is now powering Le Chat" とある） | [発表記事](https://mistral.ai/news/mistral-small-4/) | 画像 | × | — | **困難**（主力モデル） |
@@ -74,13 +74,13 @@
 4. **ページの作りは企業ごとに違う**
    HTML(div) のページ（Meta、xAI）は `<table>` 用の処理が使えないため、企業ごとに専用の抽出処理を書くことになる。ページの構造が変わると壊れやすいので、企画書 §3-2 ③ の人による確認が重要になる
 5. **アクセスのしかたで結果が変わるページがある**
-   `ai.meta.com` は curl でアクセスすると 400 になる。`developer.meta.com` は `dev.meta.ai` へのリダイレクトがある。**Meta の取得元は `https://dev.meta.ai/models/muse-spark-1-1` に固定する**（R-2 §5）
+   `ai.meta.com` は curl でアクセスすると 400 になる。`developer.meta.com` は `dev.meta.ai` へのリダイレクトがある。**Meta の取得元は `https://dev.meta.ai/models/muse-spark/`（Muse Spark 1.3。最新）に固定する**（R-2 §5）。以前の 1.1（`muse-spark-1-1`）・1.2（`muse-spark-1-2`）は最新ではない。ブラウザで確認したところ、1.3 のページには数値の表があり、列見出しは「Muse Spark 1.3（最大）」のように版の区別を含む。1 つのセルに 2 つの値（OSWorld 2.0 の「部分的」「バイナリ」）もある。ベンチマーク名が日本語で表示されていたが、ブラウザの自動翻訳かどうかは未確認（スクリプトが取る生の HTML の名前は R-9 で確認する）
 6. **モデルカードの表には他社モデルの値も並んでいる。取り込むのは「自社モデルの値」だけにする**（レビューでの確認）
    表を確認できたページは、すべて他社モデルとの比較表だった。Gemini 3.8 Flash は Claude Opus 5・GPT-5.6 Sol などの列と、API 料金（Input price $/1M tokens）の行がある。DeepSeek-V4-Pro は Opus-4.6 Max・GPT-5.4 xHigh・Gemini-3.1-Pro High など、Qwen3.8-27B は Opus4.6 Max など、Ministral 3 は Qwen3-14B・Gemma3-12B などがある。他社の列の値は、カードを書いた企業が測った（または引用した）値で、出典はその企業のページ。企画書 §2-3 の「出典の性質が混ざると、比較の前提が崩れる」にあたる
    - **ルール**：他社モデルの値は取り込まない。特に、§3 で困難とした OpenAI の値（GPT-5.6 Sol など）を、Google のカードから埋めない。料金の行（R-6）に並ぶ他社の料金も同じ
    - **同じ会社の別モデル**：Gemini 3.8 Flash のカードの Gemini 3.7 Flash の列、Qwen3.8-27B のカードの Qwen3.6-27B・Qwen3.7-Plus の列、DeepSeek-V4-Pro のカードの V4-Flash の列のように、同じ会社の別モデルの値は取り込んでよい。そのモデル自身のページがあればそちらを正とし、出典 URL には実際に取ったページを書く
 7. **推論モードや単位が混在する**（レビューでの確認）
-   同じモデルに推論モード別の値が複数ある（DeepSeek-V4-Pro の Non-Think／High／Max）。Ministral 3 の README の Reasoning・Instruct・Base の 3 つの表は、どれも行の名前が「Ministral 3 14B」だが、HF では別のリポジトリ（`-Reasoning-2512`／`-Instruct-2512`／`-Base-2512`）なので、行の名前だけで取ると 3 つのモデルの値が 1 つにまとまる。**「モデル＝モデル名＋種類＋推論モード」と決めて取る**（R-9 のパーサの設計に使う）。単位も混在する（Ministral 3 は 0.850 のような小数、Gemini は %、GDPval は Elo）。抽出の設計で漏れないよう、R-5・R-9 へ引き継ぐ。料金の行は R-6 の参考にもなる
+   同じモデルに推論モード別の値が複数ある（DeepSeek-V4-Pro の Non-Think／High／Max）。Meta の Muse Spark 1.3 も、列見出しに「（最大）」のような版の区別があり、同じ表に別の Muse 系の列が並ぶ。Ministral 3 の README の Reasoning・Instruct・Base の 3 つの表は、どれも行の名前が「Ministral 3 14B」だが、HF では別のリポジトリ（`-Reasoning-2512`／`-Instruct-2512`／`-Base-2512`）なので、行の名前だけで取ると 3 つのモデルの値が 1 つにまとまる。**「モデル＝モデル名＋種類＋推論モード」と決めて取る**（R-9 のパーサの設計に使う）。単位も混在する（Ministral 3 は 0.850 のような小数、Gemini は %、GDPval は Elo）。抽出の設計で漏れないよう、R-5・R-9 へ引き継ぐ。料金の行は R-6 の参考にもなる
 
 ## 5. 他の調査項目への引き継ぎ
 
