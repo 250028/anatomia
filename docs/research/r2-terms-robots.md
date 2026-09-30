@@ -40,7 +40,7 @@
 | blog.google | なし（検索ページのみ `Disallow`） | |
 | ai.meta.com | なし（`/ajax/`、`/*.php` などのみ `Disallow`） | 冒頭に「Facebook 上のデータを自動手段で収集するには、書面の許可が必要」という注意書き。`Scrapy` など一部のボットは全面禁止 |
 | developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 初版の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
-| dev.meta.ai | なし（同上） | **Meta の取得元はここ（`https://dev.meta.ai/models/muse-spark-1-1`）に固定する。** robots.txt の注意書きはなし。ページの「利用規約」リンクは Facebook 利用規約に遷移する（§3-3） |
+| dev.meta.ai | なし（同上） | **Meta の取得元はここに固定する（URL は R-1 §4-5 に書く）。** robots.txt の注意書きはなし。ページの「利用規約」リンクは Facebook 利用規約に遷移する（§3-3） |
 | x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］での利用を許可する宣言） |
 | mistral.ai | なし（`Allow: /`） | |
 | huggingface.co | なし（`User-agent: *` / `Allow: /` のみ。`/api/`・`/raw/`・`/resolve/` への `Disallow` もない） | |
@@ -154,7 +154,7 @@
 | --- | --- |
 | R-3（対象の選定） | 現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社。うち DeepSeek・Qwen は質問 A（HF の整理）の確認待ち。質問 B が認められれば Anthropic・xAI が加わり 5 社になる。R-3 は、この答えで場合分けして書く。Mistral の Ministral 3 系は、主力モデルに数えるかを R-3 で判断する（§1） |
 | §6-3（スクレイピングの実行ルール） | 「1 ページごとに数秒以上」の間隔を空け、ボット対策などの制限を回避しない。**このルールは Hugging Face にも適用する。** DeepSeek・Qwen・Mistral は **Hugging Face の README.md を `/resolve/` 経由（`huggingface_hub` の `hf_hub_download` など）で取得し、自社サイトからは取得しない**ことを明記する。HF のドキュメント（[rate-limits](https://huggingface.co/docs/hub/rate-limits)）が `/resolve/` をプログラム向けの経路とし、"We strongly recommend using huggingface_hub for all programmatic access to the Hub" と書いているため。README だけを取れば、R-1 §4-1 の第三者の値（Evaluation results）も混ざらない |
-| R-1 §4-5（Meta の取得元） | 取得元は `https://dev.meta.ai/models/muse-spark-1-1` に固定する（§2） |
+| R-1 §4-5（Meta の取得元） | 取得元は dev.meta.ai に固定する（ページは R-1 §4-5。§2） |
 | §8 Q-1（先生確認） | Anthropic・xAI・Meta・OpenAI・Mistral（主力モデル）の扱いが、手入力を認めるかどうかで変わる |
 | §8 Q-2（公開範囲） | 一般公開する場合、各社の規約との関係をさらに確認する必要がある（今回は「取得」の可否だけを見た） |
 
