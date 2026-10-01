@@ -42,6 +42,7 @@
 | developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 初版の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
 | dev.meta.ai | なし（同上） | **Meta の取得元はここに固定する（URL は R-1 §4-5 に書く）。** robots.txt の注意書きはなし。ページの「利用規約」リンクは Facebook 利用規約に遷移する（§3-3） |
 | x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］という利用目的についての宣言。Anatomia の用途［比較表への掲載］はどれにも当たらない） |
+| media.x.ai（モデルカード PDF の置き場） | robots.txt が存在しない（404。2026-10-01、レビューでの確認。私たちは開いていない） | RFC 9309 §2.3.1.3 では、robots.txt が 4xx のときは、どのリソースにもアクセスしてよい扱い。ただしこれは「制限していない」という既定の状態で、`Allow: /` と同じく、規約上の許可とはみなさない（質問 B の後半と同じ整理）。規約上の判定は x.ai と同じ「要相談」で、先生の回答が出るまで、この PDF にもスクリプトではアクセスしない |
 | mistral.ai | なし（`Allow: /`） | |
 | huggingface.co | なし（`User-agent: *` / `Allow: /` のみ。`/api/`・`/raw/`・`/resolve/` への `Disallow` もない） | |
 | api-docs.deepseek.com | robots.txt が存在しない（HTML が返る） | |
@@ -156,6 +157,7 @@
 | --- | --- |
 | R-3（対象の選定） | スクリプトでの取得だけの見通し：現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社（DeepSeek・Qwen は質問 A の確認待ち）。質問 A が認められ、かつ質問 B が「適用されない」（主なルート）または「`Allow` を許可とみなせる」（根拠は弱い）となれば、Anthropic・xAI が加わり 5 社。質問 B の前半が「及ばない」となった場合は、Meta も再検討する（§4）。これとは別に、Q-1 で手入力が認められれば社数が増える可能性がある。R-3 は、これらの答えで場合分けして書く。Mistral の Ministral 3 系は、主力モデルに数えるかを R-3 で判断する（§1） |
 | §6-3（スクレイピングの実行ルール） | 「1 ページごとに数秒以上」の間隔を空け、ボット対策などの制限を回避しない。**このルールは Hugging Face にも適用する。** DeepSeek・Qwen・Mistral は **Hugging Face の README.md を `/resolve/` 経由（`huggingface_hub` の `hf_hub_download` など）で取得し、自社サイトからは取得しない**ことを明記する。HF のドキュメント（[rate-limits](https://huggingface.co/docs/hub/rate-limits)）が `/resolve/` をプログラム向けの経路とし、"We strongly recommend using huggingface_hub for all programmatic access to the Hub" と書いているため。README だけを取れば、R-1 §4-1 の第三者の値（Evaluation results）も混ざらない |
+| R-9（収集技術） | xAI のモデルカード PDF（media.x.ai）を使うと決めたら、抽出方法は R-1 §2 の記述（R-9 で要検証）に従う。規約上の可否は、§2 の media.x.ai の行と質問 B の答えに従う |
 | R-1 §4-5（Meta の取得元） | 取得元は dev.meta.ai に固定する（ページは R-1 §4-5。§2） |
 | §8 Q-1（先生確認） | Anthropic・xAI・Meta・OpenAI・Mistral（主力モデル）の扱いが、手入力を認めるかどうかで変わる |
 | §8 Q-2（公開範囲） | 一般公開する場合、各社の規約との関係をさらに確認する必要がある（今回は「取得」の可否だけを見た） |
