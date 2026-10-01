@@ -9,9 +9,9 @@
 
 ## 1. 結論
 
-- **8 社中 6 社は、各社の主力モデルのどこか 1 か所に「requests + HTML パーサ」で取れる公式ページがある**（Anthropic、Google、Meta、xAI、DeepSeek、Qwen）。**OpenAI（ボット対策で 403）と Mistral（主力モデルは画像）は、主力モデルの数値を取れない**。数えたのは、§2 の「最新の主力モデル」のページ
+- **8 社中 6 社は、各社の主力モデルのどこか 1 か所に「requests + HTML パーサ」で取れる公式ページがある**（Anthropic、Google、Meta、xAI、DeepSeek、Qwen。**Meta は 1.1 のページでの判定**で、最新の 1.3 は生 HTML を未確認。§2）。主力モデルの定義は R-3 で確定するので、この社数は暫定。**OpenAI（ボット対策で 403）と Mistral（主力モデルは画像）は、主力モデルの数値を取れない**。数えたのは、§2 の「最新の主力モデル」のページ
 - **発表ブログは画像が多い。** Google・Mistral・DeepSeek・Meta（ブログ）・Anthropic（一部）は、発表記事ではスコアを画像で載せている。**取得元は「発表ブログ」ではなく「モデルカード」を優先するのがよい**
-- **Mistral の主力モデル（Small 4・Large 3・Medium 3.5）は、公式の数値が画像。** 一方、**小型の Ministral 3 系は Hugging Face の README にベンチマークが Markdown の表で載っている**。主力モデルを取るには手入力が必要で、企画書 §8 Q-1（画像の値を手入力で認めるか）の判断待ちになる。Ministral 3 系を 企画書 §4-3 の「現行主力モデル」に数えてよいかは R-3 で判断する
+- **Mistral の主力モデル（Small 4・Large 3・Medium 3.5）は、公式の数値が画像。** 一方、**小型の Ministral 3 系は Hugging Face の README にベンチマークが Markdown の表で載っている**。主力モデルを取るには手入力が必要で、企画書 §8 Q-1（手入力を認めるか。対象の企業は R-2 §5）の判断待ちになる。Ministral 3 系を 企画書 §4-3 の「現行主力モデル」に数えてよいかは R-3 で判断する
 - **同じ会社でもモデル・ページによって形式が変わる**（例：Anthropic は Opus 5.5 が HTML 表、Fable 5 が画像）。対象を決めたら、モデルごとに取得元を記録しておく必要がある
 
 ## 2. 企業 × 公開形式の一覧
@@ -36,8 +36,8 @@
 | Google | Gemini 3.8 Flash、3.5 Flash など | [ブログ（3.5 / 3.8 Flash）](https://blog.google/innovation-and-ai/models-and-research/gemini-models/gemini-3-5/) | 画像（本文に一部数値あり） | × | — | ブログは不可 |
 | | | [DeepMind モデルカード（3.5 Flash）](https://deepmind.google/models/model-cards/gemini-3-5-flash/) | HTML表（測定条件の列あり） | ○ | あり | **取得可** |
 | | | [DeepMind モデルカード（3.8 Flash）](https://deepmind.google/models/model-cards/gemini-3-8-flash/) | HTML表（レビューでの確認） | ○ | あり | **取得可** |
-| Meta | Muse Spark 1.3（最新。レビューでの確認） | [AI at Meta ブログ](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) | 画像。curl では 400 エラー | × | — | ブログは不可 |
-| | | [Meta for Developers モデルページ](https://dev.meta.ai/models/muse-spark/) | HTML(div) | ○ | 一部（「w/ tools」など） | **取得可**（取得元は dev.meta.ai に固定。旧 URL の developer.meta.com は dev.meta.ai へ 302・308 でリダイレクトされる） |
+| Meta | Muse Spark 1.3（最新であることは作成者がブラウザで確認。ナビへの掲載はレビューで確認） | [AI at Meta ブログ](https://ai.meta.com/blog/introducing-muse-spark-meta-model-api/) | 画像。curl では 400 エラー | × | — | ブログは不可 |
+| | | [Meta for Developers モデルページ](https://dev.meta.ai/models/muse-spark/) | **未確認**（1.3 はブラウザで数値の表が見えただけ。1.1 のページは HTML(div)） | **未確認**（1.1 のページは ○） | 一部（「w/ tools」など。1.1 のページ） | **未確認**（1.3 は生 HTML を確認していない。1.1 のページは取得可。R-2 で要相談のため、先生の回答までスクリプトでは確認しない。取得元は dev.meta.ai に固定。旧 URL の developer.meta.com は dev.meta.ai へ 302・308 でリダイレクトされる） |
 | xAI | Grok 4.7 | [発表記事](https://x.ai/news/grok-4-7) | HTML(div) | ○ | あり（注記・アスタリスク） | **取得可** |
 | | | [モデルカード PDF](https://media.x.ai/v1/website/4p7card-5eccc980.pdf) | PDF（テキスト形式、グラフはベクター） | △ | — | 本文の文字の符号化が特殊で、簡易抽出では読めない。R-9 で要検証 |
 | Mistral AI | Mistral Small 4、Mistral Large 3、Mistral Medium 3.5（Medium 3.5 はレビューで追加。README に "Mistral Medium 3.5 is now powering Le Chat" とある） | [発表記事](https://mistral.ai/news/mistral-small-4/) | 画像 | × | — | **困難**（主力モデル） |
@@ -56,7 +56,7 @@
 | OpenAI | 発表記事・ヘルプセンターが Cloudflare のボット判定で 403。「Enable JavaScript and cookies」のチャレンジ画面が返る。Hugging Face・GitHub にも、主力モデルの公式の値がない（レビューでの確認）。HF の openai 組織にある言語モデルは gpt-oss 系（2025-08 作成）や研究用のモデルで、GPT-6 Astra・GPT-5.6 はなく、gpt-oss-120b の README にも表はなく arXiv のモデルカードへのリンクだけ。GitHub の openai/simple-evals は "July 2025: simple-evals will no longer be updated for new models or benchmark results." とあり、表は最新でも o3・o4-mini・GPT-4.1 まで | ①ボット判定を回避してまで取得するのは R-2 の観点で避けたい。②手入力を認めるか（Q-1）を先生に確認する。③対象外にする |
 | Mistral AI（主力モデル） | 公式ブログ（Small 4）・Hugging Face（3 モデル）ともに、主力モデル（Small 4・Large 3・Medium 3.5）のベンチマークが画像だけ。**Ministral 3 系は HF の README に Markdown の表がある**ので、こちらはスクリプトで取れる | 主力モデルは手入力を認めるか（Q-1）次第。認めなければ、Ministral 3 系を 企画書 §4-3 の「現行主力モデル」に数えるか（R-3 で判断）、または対象外 |
 
-> **補足**：OpenAI と Mistral（主力モデル）を外しても、残り 6 社（Anthropic、Google、Meta、xAI、DeepSeek、Qwen）で成功の定義「5 社以上」は満たせる見込み。ただし、ここでの「取得可」は形式上の判定で、**R-2（利用規約・robots.txt）の規約上の判定で、実際に取得可と判断できる社数は減っている**。R-3 では、この文書と R-2 の両方を読んで選定する
+> **補足**：OpenAI と Mistral（主力モデル）を外しても、残り 6 社（Anthropic、Google、Meta、xAI、DeepSeek、Qwen。Meta は 1.1 のページでの判定）で成功の定義「5 社以上」は満たせる見込み。ただし、ここでの「取得可」は形式上の判定で、**R-2（利用規約・robots.txt）の規約上の判定で、実際に取得可と判断できる社数は減っている**。R-3 では、この文書と R-2 の両方を読んで選定する
 
 ## 4. 調査で分かった注意点
 
@@ -74,7 +74,7 @@
 4. **ページの作りは企業ごとに違う**
    HTML(div) のページ（Meta、xAI）は `<table>` 用の処理が使えないため、企業ごとに専用の抽出処理を書くことになる。ページの構造が変わると壊れやすいので、企画書 §3-2 ③ の人による確認が重要になる
 5. **アクセスのしかたで結果が変わるページがある**
-   `ai.meta.com` は curl でアクセスすると 400 になる。`developer.meta.com` は `dev.meta.ai` へのリダイレクトがある。**Meta の取得元は `https://dev.meta.ai/models/muse-spark/`（Muse Spark 1.3。最新）に固定する**（R-2 §5）。以前の 1.1（`muse-spark-1-1`）・1.2（`muse-spark-1-2`）は最新ではない。ブラウザで確認したところ、1.3 のページには数値の表があり、列見出しは「Muse Spark 1.3（最大）」のように版の区別を含む。1 つのセルに 2 つの値（OSWorld 2.0 の「部分的」「バイナリ」）もある。ベンチマーク名が日本語で表示されていたが、ブラウザの自動翻訳かどうかは未確認（スクリプトが取る生の HTML の名前は R-9 で確認する）
+   `ai.meta.com` は curl でアクセスすると 400 になる。`developer.meta.com` は `dev.meta.ai` へのリダイレクトがある。**Meta の取得元は `https://dev.meta.ai/models/muse-spark/`（Muse Spark 1.3）に固定する**（R-2 §5）。以前の 1.1（`muse-spark-1-1`）・1.2（`muse-spark-1-2`）は最新ではない。最新であることと表の形式は、作成者がブラウザで確認した。1.3 のページには数値の表が見えるが、**JavaScript 実行前の生 HTML に数値があるかは未確認**（R-2 で要相談のため、先生の回答までスクリプトでは確認しない）。1.3 のページは、列見出しは「Muse Spark 1.3（最大）」のように版の区別を含む。1 つのセルに 2 つの値（OSWorld 2.0 の「部分的」「バイナリ」）もあるように見えた。ベンチマーク名が日本語で表示されていたが、ブラウザの自動翻訳かどうかは未確認（スクリプトが取る生の HTML の名前は R-9 で確認する）
 6. **モデルカードの表には他社モデルの値も並んでいる。取り込むのは「自社モデルの値」だけにする**（レビューでの確認）
    表を確認できたページは、すべて他社モデルとの比較表だった。Gemini 3.8 Flash は Claude Opus 5・GPT-5.6 Sol などの列と、API 料金（Input price $/1M tokens）の行がある。DeepSeek-V4-Pro は Opus-4.6 Max・GPT-5.4 xHigh・Gemini-3.1-Pro High など、Qwen3.8-27B は Opus4.6 Max など、Ministral 3 は Qwen3-14B・Gemma3-12B などがある。他社の列の値は、カードを書いた企業が測った（または引用した）値で、出典はその企業のページ。企画書 §2-3 の「出典の性質が混ざると、比較の前提が崩れる」にあたる
    - **ルール**：他社モデルの値は取り込まない。特に、§3 で困難とした OpenAI の値（GPT-5.6 Sol など）を、Google のカードから埋めない。料金の行（R-6）に並ぶ他社の料金も同じ
@@ -87,17 +87,18 @@
 | 引き継ぎ先 | 内容 |
 | --- | --- |
 | R-2（利用規約・robots.txt） | 取得候補のページ：anthropic.com、deepmind.google、dev.meta.ai、x.ai、huggingface.co。特に Hugging Face は企業ではなく**第三者のプラットフォーム**なので、HF 自体の規約も確認が必要（**R-2 で確認済み**。判定は R-2 を参照）。この文書の「取得可」は形式上の判定で、規約上の可否は R-2 で決まる |
-| R-3（対象の選定） | 形式上の取得可：Anthropic、Google、Meta、xAI、DeepSeek、Qwen ／ 困難：OpenAI、Mistral（主力モデル）。Mistral の Ministral 3 系は HF に Markdown の表があり、企画書 §4-3 の「現行主力モデル」に数えるかは R-3 で判断する。**規約上の可否は R-2 を参照して選定する** |
+| R-3（対象の選定） | 形式上の取得可：Anthropic、Google、Meta（1.1 のページでの判定。1.3 は生 HTML 未確認）、xAI、DeepSeek、Qwen ／ 困難：OpenAI、Mistral（主力モデル）。Mistral の Ministral 3 系は HF に Markdown の表があり、企画書 §4-3 の「現行主力モデル」に数えるかは R-3 で判断する。**規約上の可否は R-2 を参照して選定する** |
 | R-4・R-5（ベンチマークの正規化・測定条件） | 正規化で揃えるのは**名前の書き方（大文字小文字・ハイフン・空白・略記・提供元の名前）**にし、括弧内の指標やハーネスは測定条件に回す。**版（2.1／4.0、v2）や種類（Verified／Pro）が違えば別のベンチマークとして扱う**（§4-2）。同じモデルの推論モード別の値と、単位の混在（小数・%・Elo）も設計に入れる（§4-7） |
 | R-5（測定条件） | 条件の書き方が企業ごとにバラバラ（表の列／脚注／セル内の注記「with tools」）。取得可の 6 社はいずれも何らかの形で条件を載せている |
 | R-6（料金） | Gemini のモデルカードなど、比較表に API 料金の行がある（§4-6） |
 | R-9（収集技術） | 当面は **requests + HTML パーサで足りる**（取得可の 6 社はすべて生 HTML に数値がある）。Playwright が要るのは Qwen 公式ブログのみで、モデルカードを使えば不要。PDF（xAI モデルカード）は pdfplumber での抽出を要検証。**HF は README.md を `hf_hub_download` で生ファイルとして取り、公式組織のリポジトリに限り、リポジトリの `sha` を出典 URL・取得日と一緒に記録する**（§4-1）。**取り込むのは自社モデルの値だけ**（§4-6） |
-| §8 Q-1（画像の値の扱い） | OpenAI と Mistral の主力モデルを対象に含めるかどうかがこの判断で決まる。先生への確認が必要 |
+| §8 Q-1（企画書 §8 を参照。対象の企業は R-2 §5） | OpenAI と Mistral の主力モデルを対象に含めるかどうかがこの判断で決まる。先生への確認が必要 |
 
 ## 6. この調査の限界
 
 - 各社 1〜3 ページのみの確認。他のモデル（旧モデルや小型モデル）のページは形式が違う可能性がある
 - 取得は 2026-09-30 の 1 回だけ。ページの構造は予告なく変わる
+- Meta の最新モデル（Muse Spark 1.3）は、ブラウザでのみ確認した。生 HTML に数値があるかは未確認で、「取得可」は 1.1 のページでの判定
 - OpenAI の発表記事は中身を確認できていないため、形式（表か画像か）は不明
-- **「レビューでの確認」と書いた内容**（Ministral 3 系・Large 3・Medium 3.5 の形式、Gemini 3.8 Flash のカード、DeepSeek・Qwen の未検証の値の件数、OpenAI の HF・GitHub の状況、Hub API の `sha`）は、レビュアーが 2026-09-30 に確認した結果を反映したもので、私たち自身では再確認していない。取得を始める前に再確認する
+- **「レビューでの確認」と書いた内容**（Ministral 3 系・Large 3・Medium 3.5 の形式、Gemini 3.8 Flash のカード、DeepSeek・Qwen の未検証の値の件数、OpenAI の HF・GitHub の状況、Hub API の `sha`、§4-6・§4-7 で「レビューでの確認」とした内容）は、レビュアーが 2026-09-30 に確認した結果を反映したもので、私たち自身では再確認していない。取得を始める前に再確認する
 - この文書の「取得可」は形式上の判定で、規約上の可否は R-2 に従う
