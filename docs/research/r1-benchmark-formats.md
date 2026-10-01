@@ -45,7 +45,7 @@
 | | | Hugging Face モデルカード（Large 3：`Mistral-Large-3-675B-Instruct-2512`、Medium 3.5：`Mistral-Medium-3.5-128B`）（レビューでの確認） | 画像（Large 3 は 3 枚、Medium 3.5 は 4 枚。Medium 3.5 は本文に τ³-Telecom 91.4%・SWE-Bench Verified 77.6% の 2 つだけ数値あり） | × | — | 同上 |
 | | | [Hugging Face モデルカード（Ministral 3 系）](https://huggingface.co/mistralai/Ministral-3-14B-Instruct-2512)（レビューでの確認） | **Markdown**（README の「Benchmark Results」に Reasoning・Instruct・Base の 3 つの表。画像は 0 枚。3B・8B・14B が同じ表） | ○ | 表による | **取得可**（Ministral 3 系のみ。§2 の主力モデルには含めていない。数えるかは R-3 で判断） |
 | DeepSeek | DeepSeek-V4-Pro、V4.1-Flash | [API ドキュメントのニュース](https://api-docs.deepseek.com/news/news260424/) | 画像 | × | — | ニュースは不可 |
-| | | [Hugging Face モデルカード](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) | Markdown（README.md） | ○ | あり（shot 数・Pass@1・推論モード） | **取得可** |
+| | | [Hugging Face モデルカード](https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro) | Markdown（README.md） | ○ | あり（shot 数・Pass@1・推論モード） | **取得可**（確認したのは V4-Pro の **Preview 版**。正式版 `DeepSeek-V4-Pro-0813`（2026-08-13 作成）と `V4.1-Flash`（2026-09-10 作成）の README も Markdown の表だとレビューで確認されたが、私たち自身では未確認。同じ V4-Pro でも版で値が違う［HLE は正式版 42.7／60.0、Preview 37.7／48.2］ので、Preview の値を V4-Pro の値として載せない） |
 | Alibaba (Qwen) | Qwen3.8 系、Qwen3.6-27B | [公式ブログ](https://qwen.ai/blog?id=qwen3.6-27b) | JS描画（生 HTML に本文なし） | × | — | Playwright なら可能性あり |
 | | | [Hugging Face モデルカード](https://huggingface.co/Qwen/Qwen3.8-27B) | HTML表（README.md 内に HTML の `<table>` を直書き） | ○ | 一部（harness 名など） | **取得可** |
 
@@ -72,7 +72,7 @@
 3. **表の中に装飾が混ざる**
    最高値が太字（Markdown の `**94.3**`）になっている、脚注記号（`66.4%¹`）がつく、未公表を「—」「-」「--」で表す、など。抽出時に取り除く処理が要る
 4. **ページの作りは企業ごとに違う**
-   HTML(div) のページ（Meta、xAI）は `<table>` 用の処理が使えないため、企業ごとに専用の抽出処理を書くことになる。ページの構造が変わると壊れやすいので、企画書 §3-2 ③ の人による確認が重要になる
+   HTML(div) のページ（Meta は 1.1 のページ、xAI）は `<table>` 用の処理が使えないため、企業ごとに専用の抽出処理を書くことになる。ページの構造が変わると壊れやすいので、企画書 §3-2 ③ の人による確認が重要になる
 5. **アクセスのしかたで結果が変わるページがある**
    `ai.meta.com` は curl でアクセスすると 400 になる。`developer.meta.com` は `dev.meta.ai` へのリダイレクトがある。**Meta の取得元は `https://dev.meta.ai/models/muse-spark/`（Muse Spark 1.3）に固定する**（R-2 §5）。以前の 1.1（`muse-spark-1-1`）・1.2（`muse-spark-1-2`）は最新ではない。最新であることと表の形式は、作成者がブラウザで確認した。1.3 のページには数値の表が見えるが、**JavaScript 実行前の生 HTML に数値があるかは未確認**（R-2 で要相談のため、先生の回答までスクリプトでは確認しない）。1.3 のページは、列見出しは「Muse Spark 1.3（最大）」のように版の区別を含む。1 つのセルに 2 つの値（OSWorld 2.0 の「部分的」「バイナリ」）もあるように見えた。ベンチマーク名が日本語で表示されていたが、ブラウザの自動翻訳かどうかは未確認（スクリプトが取る生の HTML の名前は R-9 で確認する）
 6. **モデルカードの表には他社モデルの値も並んでいる。取り込むのは「自社モデルの値」だけにする**（レビューでの確認）
@@ -80,7 +80,7 @@
    - **ルール**：他社モデルの値は取り込まない。特に、§3 で困難とした OpenAI の値（GPT-5.6 Sol など）を、Google のカードから埋めない。料金の行（R-6）に並ぶ他社の料金も同じ
    - **同じ会社の別モデル**：Gemini 3.8 Flash のカードの Gemini 3.7 Flash の列、Qwen3.8-27B のカードの Qwen3.6-27B・Qwen3.7-Plus の列、DeepSeek-V4-Pro のカードの V4-Flash の列のように、同じ会社の別モデルの値は取り込んでよい。そのモデル自身のページがあればそちらを正とし、出典 URL には実際に取ったページを書く
 7. **推論モードや単位が混在する**（レビューでの確認）
-   同じモデルに推論モード別の値が複数ある（DeepSeek-V4-Pro の Non-Think／High／Max）。Meta の Muse Spark 1.3 も、列見出しに「（最大）」のような版の区別があり、同じ表に別の Muse 系の列が並ぶ。Ministral 3 の README の Reasoning・Instruct・Base の 3 つの表は、どれも行の名前が「Ministral 3 14B」だが、HF では別のリポジトリ（`-Reasoning-2512`／`-Instruct-2512`／`-Base-2512`）なので、行の名前だけで取ると 3 つのモデルの値が 1 つにまとまる。**「モデル＝モデル名＋種類＋推論モード」と決めて取る**（R-9 のパーサの設計に使う）。単位も混在する（Ministral 3 は 0.850 のような小数、Gemini は %、GDPval は Elo）。抽出の設計で漏れないよう、R-5・R-9 へ引き継ぐ。料金の行は R-6 の参考にもなる
+   同じモデルに推論モード別の値が複数ある（DeepSeek-V4-Pro の Non-Think／High／Max）。Meta の Muse Spark 1.3 も（作成者のブラウザでの確認）、列見出しに「（最大）」のような版の区別があり、同じ表に別の Muse 系の列が並ぶ。Ministral 3 の README の Reasoning・Instruct・Base の 3 つの表は、どれも行の名前が「Ministral 3 14B」だが、HF では別のリポジトリ（`-Reasoning-2512`／`-Instruct-2512`／`-Base-2512`）なので、行の名前だけで取ると 3 つのモデルの値が 1 つにまとまる。**「モデル＝モデル名＋種類＋推論モード」と決めて取る**（R-9 のパーサの設計に使う）。単位も混在する（Ministral 3 は 0.850 のような小数、Gemini は %、GDPval は Elo）。抽出の設計で漏れないよう、R-5・R-9 へ引き継ぐ。料金の行は R-6 の参考にもなる
 
 ## 5. 他の調査項目への引き継ぎ
 
@@ -89,15 +89,16 @@
 | R-2（利用規約・robots.txt） | 取得候補のページ：anthropic.com、deepmind.google、dev.meta.ai、x.ai、huggingface.co。特に Hugging Face は企業ではなく**第三者のプラットフォーム**なので、HF 自体の規約も確認が必要（**R-2 で確認済み**。判定は R-2 を参照）。この文書の「取得可」は形式上の判定で、規約上の可否は R-2 で決まる |
 | R-3（対象の選定） | 形式上の取得可：Anthropic、Google、Meta（1.1 のページでの判定。1.3 は生 HTML 未確認）、xAI、DeepSeek、Qwen ／ 困難：OpenAI、Mistral（主力モデル）。Mistral の Ministral 3 系は HF に Markdown の表があり、企画書 §4-3 の「現行主力モデル」に数えるかは R-3 で判断する。**規約上の可否は R-2 を参照して選定する** |
 | R-4・R-5（ベンチマークの正規化・測定条件） | 正規化で揃えるのは**名前の書き方（大文字小文字・ハイフン・空白・略記・提供元の名前）**にし、括弧内の指標やハーネスは測定条件に回す。**版（2.1／4.0、v2）や種類（Verified／Pro）が違えば別のベンチマークとして扱う**（§4-2）。同じモデルの推論モード別の値と、単位の混在（小数・%・Elo）も設計に入れる（§4-7） |
-| R-5（測定条件） | 条件の書き方が企業ごとにバラバラ（表の列／脚注／セル内の注記「with tools」）。取得可の 6 社はいずれも何らかの形で条件を載せている |
+| R-5（測定条件） | 条件の書き方が企業ごとにバラバラ（表の列／脚注／セル内の注記「with tools」）。取得可の 6 社はいずれも何らかの形で条件を載せている（Meta は 1.1 のページでの判定） |
 | R-6（料金） | Gemini のモデルカードなど、比較表に API 料金の行がある（§4-6） |
-| R-9（収集技術） | 当面は **requests + HTML パーサで足りる**（取得可の 6 社はすべて生 HTML に数値がある）。Playwright が要るのは Qwen 公式ブログのみで、モデルカードを使えば不要。PDF（xAI モデルカード）は pdfplumber での抽出を要検証。**HF は README.md を `hf_hub_download` で生ファイルとして取り、公式組織のリポジトリに限り、リポジトリの `sha` を出典 URL・取得日と一緒に記録する**（§4-1）。**取り込むのは自社モデルの値だけ**（§4-6） |
-| §8 Q-1（企画書 §8 を参照。対象の企業は R-2 §5） | OpenAI と Mistral の主力モデルを対象に含めるかどうかがこの判断で決まる。先生への確認が必要 |
+| R-9（収集技術） | 当面は **requests + HTML パーサで足りる**（取得可の 6 社はすべて生 HTML に数値がある。Meta は 1.1 のページでの判定で、1.3 は未確認）。Playwright が要るのは Qwen 公式ブログのみで、モデルカードを使えば不要。PDF（xAI モデルカード）は pdfplumber での抽出を要検証。**HF は README.md を `hf_hub_download` で生ファイルとして取り、公式組織のリポジトリに限り、リポジトリの `sha` を出典 URL・取得日と一緒に記録する**（§4-1）。**取り込むのは自社モデルの値だけ**（§4-6） |
+| §8 Q-1（企画書 §8 を参照。対象の企業は R-2 §5） | 対象の企業と扱いは R-2 §5 を参照。先生への確認が必要 |
 
 ## 6. この調査の限界
 
 - 各社 1〜3 ページのみの確認。他のモデル（旧モデルや小型モデル）のページは形式が違う可能性がある
 - 取得は 2026-09-30 の 1 回だけ。ページの構造は予告なく変わる
+- DeepSeek は、V4-Pro の Preview 版の README だけを確認した。正式版（`-0813`）と V4.1-Flash は未確認で、取得元の差し替えは R-3 で決める
 - Meta の最新モデル（Muse Spark 1.3）は、ブラウザでのみ確認した。生 HTML に数値があるかは未確認で、「取得可」は 1.1 のページでの判定
 - OpenAI の発表記事は中身を確認できていないため、形式（表か画像か）は不明
 - **「レビューでの確認」と書いた内容**（Ministral 3 系・Large 3・Medium 3.5 の形式、Gemini 3.8 Flash のカード、DeepSeek・Qwen の未検証の値の件数、OpenAI の HF・GitHub の状況、Hub API の `sha`、§4-6・§4-7 で「レビューでの確認」とした内容）は、レビュアーが 2026-09-30 に確認した結果を反映したもので、私たち自身では再確認していない。取得を始める前に再確認する
