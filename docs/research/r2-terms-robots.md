@@ -19,12 +19,12 @@
 | Mistral AI | huggingface.co（README.md） | 取得可（同上。自社規約の対象は自社の Products のみ） | Ministral 3 系は Markdown の表で取れる。主力モデル（Small 4・Large 3・Medium 3.5）は数値が画像のみ | **Ministral 3 系のみ取得可（先生の確認待ち）。主力モデルは手入力（Q-1）が必要** |
 | Anthropic | anthropic.com | 要相談（スクリプトでのアクセスを禁止。§3-1、§4） | ページによる（Opus 5.5 は HTML の表、Fable 5 は画像） | **要相談** |
 | xAI | x.ai | 要相談（AUP がスクリプトでのアクセスを禁止。§3-1、§4） | 取れる | **要相談** |
-| Meta | dev.meta.ai | 要相談（不可寄り。Meta の規約は自動データ収集に書面の許可を求める） | 取れる | **要相談（不可寄り）。判断は Q-1 の答えで決まる（§4）** |
+| Meta | dev.meta.ai | 要相談（不可寄り。Meta の規約は自動データ収集に書面の許可を求める） | 取れる | **要相談（不可寄り）。判断は Q-1 の答えで決まる。質問 B の対象には加えない（理由は §4）** |
 | OpenAI | openai.com | 不可（規約が自動抽出を禁止） | ボット対策で取れない。HF・GitHub にも主力モデルの公式の値がない | **不可** |
 
-- **現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社。** うち DeepSeek・Qwen は質問 A（Hugging Face の整理）について先生の確認待ちなので、**先生の確認なしで取得できるのは Google だけ**。成功の定義「5 社以上」に届かせるには、下の 2 点の確認が要る
+- **現時点で取得可と判断したのは Google・DeepSeek・Qwen の 3 社。** うち DeepSeek・Qwen は質問 A（Hugging Face の整理）について先生の確認待ちなので、**先生の確認なしで取得できるのは Google だけ**。スクリプトでの取得だけで成功の定義「5 社以上」に届かせるには、下の 2 点の確認が要る（Q-1 で手入力が認められれば、これとは別に社数が増える可能性がある。§4）
   1. 質問 A（Hugging Face の整理。§4）が認められる → DeepSeek・Qwen（と Mistral の Ministral 3 系）が確定
-  2. 質問 B（「消費者向け規約は公開ページの低頻度な取得にも適用されるか」。§4）が「適用されない」または「robots.txt の `Allow: /` を許可とみなせる」となる → Anthropic・xAI が加わり、Google・DeepSeek・Qwen・Anthropic・xAI の 5 社に届く
+  2. 質問 B（「消費者向け規約は公開ページの低頻度な取得にも適用されるか」。§4）が「適用されない」となる（主なルート）、または「robots.txt の `Allow: /` を許可とみなせる」となる（**根拠は弱い**。§4 の質問 B にある反対の材料を参照）→ Anthropic・xAI が加わり、Google・DeepSeek・Qwen・Anthropic・xAI の 5 社に届く
 - **Mistral の Ministral 3 系は、この 3 社・5 社の数に含めていない。** 小型モデルだけなので、企画書 §4-3 の「現行主力モデル」に数えるかは R-3 で判断する。数える場合は、質問 A が認められた時点で 4 社になり、質問 B で Anthropic か xAI の**どちらか 1 社**が加われば 5 社に届く
 - robots.txt だけを見ると、**どのサイトも取得先のページを禁止していない**。可否を分けているのは利用規約のほう
 
@@ -41,7 +41,7 @@
 | ai.meta.com | なし（`/ajax/`、`/*.php` などのみ `Disallow`） | 冒頭に「Facebook 上のデータを自動手段で収集するには、書面の許可が必要」という注意書き。`Scrapy` など一部のボットは全面禁止 |
 | developer.meta.com | なし（同上） | 同じ注意書きあり。ただし Facebook 上のデータについての文言で、取得先の dev.meta.ai には当てはまらない。R-1 初版の URL は dev.meta.ai へ 302・308 でリダイレクトされる |
 | dev.meta.ai | なし（同上） | **Meta の取得元はここに固定する（URL は R-1 §4-5 に書く）。** robots.txt の注意書きはなし。ページの「利用規約」リンクは Facebook 利用規約に遷移する（§3-3） |
-| x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］での利用を許可する宣言） |
+| x.ai | なし（`/tools/` のみ `Disallow`） | `Content-Signal: ai-train=yes, search=yes, ai-input=yes`（AI 学習［ai-train］・検索［search］・AI への入力［ai-input］という利用目的についての宣言。Anatomia の用途［比較表への掲載］はどれにも当たらない） |
 | mistral.ai | なし（`Allow: /`） | |
 | huggingface.co | なし（`User-agent: *` / `Allow: /` のみ。`/api/`・`/raw/`・`/resolve/` への `Disallow` もない） | |
 | api-docs.deepseek.com | robots.txt が存在しない（HTML が返る） | |
@@ -57,7 +57,7 @@
 | Hugging Face | [Terms of Service](https://huggingface.co/terms-of-service)（Effective Date: 2022-09-15）、[Content Policy](https://huggingface.co/content-policy)（規約に組み込まれた方針） | 規約：自動取得を禁止する条項はない。ただし "all of our policies available on our Website" の順守を求め、"Any Content you download, access or use from us or another User, is at your own risk and **subject to these Terms and/or the terms accompanying such Content**" とある。Content Policy には濫用の例として "Using tools like Cloudflare Tunnel, TOR, proxies, VNC, Chrome Remote Server, etc., to bypass restrictions" と "excessive bulk activity" がある | 自動取得を禁止する条項はない。**低頻度で読むだけなら当たらないが、「間隔を空け、制限を回避しない」ことを守る。§6-3 のルールを HF にも適用する。** 公開リポジトリのコンテンツを HF の機能を通じて使用・複製することを許諾する条項があり、質問 A の根拠になる。DeepSeek・Qwen・Mistral（確認したのは Small 4）の License にも取得を制限する条件はない。全文の確認結果と各 License は §3-3 |
 | xAI | [Terms of Service - Consumer](https://x.ai/legal/terms-of-service)（Last Updated: 2026-09-11）と、規約が取り込む [Acceptable Use Policy](https://x.ai/legal/acceptable-use-policy)（Effective: 2026-08-14） | 規約：「Service」に "associated applications, features, tools, software and websites" を含み、"By accessing and using our Service, you acknowledge and agree to these Terms and any other applicable terms and policies, including our Acceptable Use Policy." とある。AUP："applies to anyone using our Service"。禁止事項に "**Accessing the Services through unauthorized automated or non-human means, whether through a bot, script, or otherwise**" | **スクリプトでのアクセスを禁止しており、Anthropic の規約とほぼ同じ文言・構造。** 判定は Anthropic と同じ「要相談」。初版で引用した "any robot, spider, scraper ... than a human can reasonably produce ..." は現行の規約本文にないため、「人間と同程度の頻度なら禁止に当たらない」という読み方は根拠にしない。取得元の x.ai の発表記事が「本サービス」に含まれるかは、規約から読み取れない。ブラウザでの確認結果は §3-3 |
 | Anthropic | [Consumer Terms of Service](https://www.anthropic.com/legal/consumer-terms) §3（Effective: 2025-10-08） | "To **crawl, scrape, or otherwise harvest data** or information from our Services other than as permitted under these Terms."／"**Except when you are accessing our Services via an Anthropic API Key or where we otherwise explicitly permit it, to access the Services through automated or non-human means, whether through a bot, script, or otherwise.**"／"Services" = "Claude.ai, Claude Pro, and other products and services ... along with any associated apps, software, **and websites**"／"By accessing our Services, you agree to these Terms."（レビューでの確認） | **ウェブサイトのスクレイピング・スクリプトでのアクセスも禁止対象**と読める。ただしこれは Claude の利用者向けの規約で、アカウントを持たずにサイトを見るだけの人にも適用されるかははっきりしない。"explicitly permit" を robots.txt の `Allow: /` が満たすかも論点 → 要相談 |
-| Meta | [Automated Data Collection Terms](https://www.facebook.com/legal/automated_data_collection_terms)（Effective: 2024-10-07。旧 URL からのリダイレクト先） | "You will not engage in Automated Data Collection **without first obtaining Meta's express written permission**"。続きに "or in any manner that is not explicitly authorized by Meta" | **書面の許可が必要。許可があっても、収集したデータの用途は検索エンジン・URL プレビューなどに限られ、許可を得た後の義務も重い。学生のプロジェクトでは、許可の申請は現実的でない。** dev.meta.ai のモデルページのフッターの「Terms of Service」が https://www.facebook.com/policies_center/ を指しているので、Meta の規約が適用される前提で考えるのが安全（対象の「Meta Company Products」の定義に dev.meta.ai が含まれるかは未確認）。確認結果は §3-3 |
+| Meta | [Automated Data Collection Terms](https://www.facebook.com/legal/automated_data_collection_terms)（Effective: 2024-10-07。旧 URL からのリダイレクト先） | "You will not engage in Automated Data Collection **without first obtaining Meta's express written permission**"。続きに "or in any manner that is not explicitly authorized by Meta" | **書面の許可が必要。許可があっても、収集したデータの用途は検索エンジン・URL プレビューなどに限られ、許可を得た後の義務も重い。学生のプロジェクトでは、許可の申請は現実的でない。** dev.meta.ai のモデルページのフッターの「Terms of Service」は https://www.facebook.com/policies_center/ を指す（初版のブラウザでの確認）。Muse Spark 1.3 のページで「利用規約」を開くと、Facebook 利用規約に遷移した（§3-3）。リンクの書き方は違うが、どちらも Facebook の規約ページに行き着くので、dev.meta.ai は対象と見てよい。確認結果は §3-3 |
 | OpenAI | [Terms of Use](https://openai.com/policies/row-terms-of-use/)（Effective: 2026-01-01） | "Automatically or programmatically extract data or Output" を禁止。「Services」に "any associated software applications and websites" を含む。同じ箇所に "circumvent any rate limits or restrictions or bypass any protective measures" もある | 自動での抽出を禁止。Internet Archive の保存版（2026-09-29 取得）で原文を照合済み。ボット対策を回避しないという R-1 の判断の裏づけにもなる。実際のページもボット対策で取得できない |
 | Mistral AI | [ROW Consumer Terms](https://legal.mistral.ai/terms/row-consumer-terms)（Effective: 2026-09-25） | 対象の "Mistral AI Products" を "Vibe and the other websites, products, software, services, and technologies we offer" と定義し、"(f) Use any method to **extract any content from the Mistral AI Products** other than as permitted through the Mistral AI Products" | 自社サイト・自社サービスからの抽出を禁止。**Hugging Face 上のモデルカードはこの規約の対象外**という整理（§4）を DeepSeek・Qwen と同じように当てはめると、不可の理由は技術的な壁（主力モデルの数値が画像のみ）だけになる。Ministral 3 系は HF の README に Markdown の表がある（R-1 のレビューで確認） |
 | DeepSeek | [DeepSeek 利用規約](https://cdn.deepseek.com/policies/en-US/deepseek-terms-of-use.html)（日本語版が返った） | 「本サービスのコンテンツをキャプチャ、コピー（**ロボット、スパイダー、その他自動セットアップの使用**、ミラーの設定を含む……）すること」を禁止。「本サービス」には「ウェブサイト」を含む | **自社サイトからの自動取得は禁止。** 取得元を Hugging Face にすれば、この規約の対象外（と整理する。§4） |
@@ -123,7 +123,7 @@
 - **残る論点**：対象の「Meta Company Products」は Facebook 利用規約の定義に委ねられており（本文には定義がない）、dev.meta.ai が含まれるかは、下の Facebook 利用規約の確認結果を参照。なお、初版の「Facebook・Instagram 以外も含むと書かれている」は、この規約の本文にはなく、Facebook 利用規約側の定義の話
 - **Facebook 利用規約（2025-01-01 適用。貼り付けた日本語版）の確認結果**
   - 適用範囲：冒頭に「Facebook、Messenger、弊社が提供するその他の製品、**ウェブサイト**、機能、アプリ、サービス、技術、およびソフトウェア」とあり、文面上は dev.meta.ai も含まれうる。さらに、dev.meta.ai の Muse Spark 1.3 のページで「利用規約」のリンクを開くと、この Facebook 利用規約に遷移した（ブラウザでの確認。ページ側に別の規約はない）。**dev.meta.ai は、この規約の対象と見てよい**。「Meta 社製品」の定義ページは、リンクが貼り付けに残っておらず読めていない
-  - §3.2-3：「弊社から事前の許可を得ることなく、自動化手段を用いて弊社製品のデータにアクセスしたり、データを取得したりすること」を禁止。Facebook アカウントにログインしているかどうかは問わない。ログインなしでも適用される書き方で、Anthropic・xAI と同じ論点（質問 B）になる
+  - §3.2-3：「弊社から事前の許可を得ることなく、自動化手段を用いて弊社製品のデータにアクセスしたり、データを取得したりすること」を禁止。Facebook アカウントにログインしているかどうかは問わない。ログインなしでも適用される書き方で、Anthropic・xAI と同じ論点になる。ただし Meta は質問 B の対象に加えない（理由は §4）
   - §3.2-7：アクセスを制御・制限するための技術的措置の回避を禁止
   - 判定は「要相談（不可寄り）」のまま。自動データ収集規約に加えて、利用規約本体にも自動取得の禁止がある。手入力なら Q-1 の答えで決まる点も変わらない
 
@@ -137,7 +137,7 @@
 | Mistral AI | Ministral 3 系のみ取得可（確認待ち） | 同上。Mistral の規約の対象は自社の Products で、HF 上のモデルカードは対象外 | 質問 A。主力モデルは数値が画像のみなので、手入力（Q-1）が必要 |
 | Anthropic | 要相談 | 規約が「ウェブサイトを含むサービス」へのスクリプトでのアクセスを禁止 | 質問 B |
 | xAI | 要相談 | AUP が「ボット・スクリプトでのアクセス」を禁止。文言・構造が Anthropic と同じ | 質問 B |
-| Meta | 要相談（不可寄り） | 自動データ収集には書面の許可が必要。許可があっても用途が限られ（検索エンジン・URL プレビュー）、義務も重い（§3-1） | 許可の申請は現実的でないため、独立した質問にはせず **Q-1 にまとめる**（手入力が認められれば手入力、認められなければ対象外） |
+| Meta | 要相談（不可寄り） | 自動データ収集には書面の許可が必要。許可があっても用途が限られ（検索エンジン・URL プレビュー）、義務も重い（§3-1） | 許可の申請は現実的でないため、独立した質問にはせず **Q-1 にまとめる**（手入力が認められれば手入力、認められなければ対象外）。**質問 B の対象には加えない**：自動データ収集規約は書面での明示の許可を求めているので、質問 B の後半（`Allow` を許可とみなせるか）は当てはまらない。前半が「及ばない」となったときは、Facebook 利用規約も同じ理屈になるので、Meta も再検討する |
 | OpenAI | 不可 | 規約が自動抽出を禁止＋ボット対策。HF・GitHub にも主力モデルの公式の値がない | 手入力を認めるか（Q-1） |
 
 **質問 A（Hugging Face の整理）**
@@ -145,6 +145,8 @@
 
 **質問 B（消費者向け規約の適用範囲）**
 > 「サービス」にウェブサイトを含む消費者向け規約（Anthropic・xAI）は、文面上、アクセスしただけで規約に同意したとみなす書き方になっている（Anthropic："By accessing our Services, you agree to these Terms."、xAI："when you otherwise access, interact with, and/or use the platform"、"Where available, you may access our Service without logging in"）。アカウントを作らず、同意の操作もしていない閲覧者にも、こうした規約が及ぶ前提で扱うべきか。及ぶ前提なら、robots.txt の `Allow: /` を規約上の「許可」とみなせるか（Anthropic の規約には "explicitly permit"、xAI の AUP には "unauthorized" という言葉がある）。xAI については、あわせて、x.ai の発表記事のページが規約の「本サービス」（Grok・Grokipedia などの製品とその関連ウェブサイト）に含まれるかも確認したい
+>
+> 後半には、許可とみなせない側の材料もある。robots.txt の標準である RFC 9309 は、冒頭で "These rules are not a form of access authorization." としている（https://www.rfc-editor.org/rfc/rfc9309 §1）。Google が取得可なのは、Google の規約そのものが robots.txt に従うことを条件にしているからで、Anthropic・xAI の規約は、§3-1 の引用の範囲では robots.txt に触れていない。`User-agent: *` / `Allow: /` は「制限していない」という既定の状態なので、Anthropic の "explicitly permit" にあたるとは言いにくい
 
 > **手入力（Q-1）について**：メンバーがブラウザで見て値を書き写すのはスクレイピングではないので、上の規約の多くには当たらない。Q-1 で手入力が認められれば、Anthropic・xAI・Meta・OpenAI・Mistral の主力モデルも対象に含められる可能性がある。ただし企画書 §6-1 の「Python スクリプトで収集する」という授業の制約との関係も含めて、先生に確認したい。
 
