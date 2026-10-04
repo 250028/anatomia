@@ -8,4 +8,4 @@ AIモデル分析サービス
 
 | 知りたいこと | 見るファイル |
 | --- | --- |
-| 何を、誰のために、どう作るのか（企画書・ドラフト） | [`docs/proposal.md`](docs/proposal.md) |
+| 何を、誰のために、どう作るのか（企画書） | [`docs/proposal.md`](docs/proposal.md) |
