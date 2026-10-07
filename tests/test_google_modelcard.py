@@ -151,24 +151,34 @@ class MainTest(unittest.TestCase):
     ROBOTS_OK = "User-agent: *\nAllow: /\n"
 
     def run_main(self, pages):
-        """pages: URL → 返す response。ネットワークには出ない。呼ばれた URL と sleep の秒数を返す。"""
-        calls = []
+        """pages: URL → 返す response。ネットワークには出ない。
+
+        get と sleep を 1 つの一覧に順に記録する（間隔が取得の前に入っているかを見るため）。
+        出力は、止まったときも含めて、ファイルがあれば読む（途中の結果を書いていないかを見るため）。
+        """
+        events = []
 
         def fake_get(url, **kwargs):
-            calls.append(url)
+            events.append(("get", url))
             return pages[url]
 
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "out.json"
             argv = ["prog", "--by", "tester", "--out", str(out)]
+            exit_ = None
             with mock.patch("sys.argv", argv), \
                     mock.patch.object(google_modelcard.requests, "get", side_effect=fake_get), \
-                    mock.patch.object(google_modelcard.time, "sleep") as sleep:
+                    mock.patch.object(google_modelcard.time, "sleep", side_effect=lambda n: events.append(("sleep", n))):
                 try:
                     google_modelcard.main()
                 except SystemExit as e:
-                    return calls, sleep.call_args_list, e, None
-                return calls, sleep.call_args_list, None, json.loads(out.read_text(encoding="utf-8"))
+                    exit_ = e
+            data = json.loads(out.read_text(encoding="utf-8")) if out.exists() else None
+        return events, exit_, data
+
+    @staticmethod
+    def gets(events):
+        return [url for kind, url in events if kind == "get"]
 
     def pages(self, robots=None):
         pages = {google_modelcard.ROBOTS_URL: robots or response(200, self.ROBOTS_OK)}
@@ -176,16 +186,17 @@ class MainTest(unittest.TestCase):
         return pages
 
     def test_robots_を先に取り_すべてのページの前に3秒空ける(self):
-        calls, sleeps, exit_, data = self.run_main(self.pages())
+        events, exit_, data = self.run_main(self.pages())
         self.assertIsNone(exit_)
-        self.assertEqual(calls, [google_modelcard.ROBOTS_URL, *google_modelcard.MODEL_CARD_URLS])
-        self.assertEqual([c.args[0] for c in sleeps], [3, 3])
+        robots, card1, card2 = google_modelcard.ROBOTS_URL, *google_modelcard.MODEL_CARD_URLS
+        self.assertEqual(events, [("get", robots), ("sleep", 3), ("get", card1), ("sleep", 3), ("get", card2)])
         self.assertTrue(data["records"])
 
     def test_robots_で禁止されていたらページを取らずに止まる(self):
-        calls, _, exit_, _ = self.run_main(self.pages(robots=response(200, "User-agent: *\nDisallow: /models/\n")))
+        events, exit_, data = self.run_main(self.pages(robots=response(200, "User-agent: *\nDisallow: /models/\n")))
         self.assertIn("robots.txt", str(exit_))
-        self.assertEqual(calls, [google_modelcard.ROBOTS_URL])
+        self.assertEqual(self.gets(events), [google_modelcard.ROBOTS_URL])
+        self.assertIsNone(data)
 
     def test_robots_の禁止を_Allow_や記法に惑わされず見つける(self):
         # 標準ライブラリの RobotFileParser は、このうち、Allow の後の Disallow・ワイルドカード・HTML を取得可と判定する（PR #9 のレビューで確認）
@@ -200,26 +211,27 @@ class MainTest(unittest.TestCase):
         }
         for name, body in cases.items():
             with self.subTest(name):
-                calls, _, exit_, data = self.run_main(self.pages(robots=response(200, body)))
+                events, exit_, data = self.run_main(self.pages(robots=response(200, body)))
                 self.assertIsNotNone(exit_)
                 self.assertIsNone(data)
-                self.assertEqual(calls, [google_modelcard.ROBOTS_URL])
+                self.assertEqual(self.gets(events), [google_modelcard.ROBOTS_URL])
 
     def test_当てはまらない_Disallow_では止まらない(self):
         body = "User-agent: *\nAllow: /\nDisallow: /search\nDisallow:\n\nUser-agent: OtherBot\nDisallow: /\n"
-        _, _, exit_, data = self.run_main(self.pages(robots=response(200, body)))
+        _, exit_, data = self.run_main(self.pages(robots=response(200, body)))
         self.assertIsNone(exit_)
         self.assertTrue(data["records"])
 
     def test_robots_が200以外ならページを取らずに止まる(self):
-        calls, _, exit_, _ = self.run_main(self.pages(robots=response(404)))
+        events, exit_, data = self.run_main(self.pages(robots=response(404)))
         self.assertIn("404", str(exit_))
-        self.assertEqual(calls, [google_modelcard.ROBOTS_URL])
+        self.assertEqual(self.gets(events), [google_modelcard.ROBOTS_URL])
+        self.assertIsNone(data)
 
     def test_ページが403なら止まり_出力は書かない(self):
         pages = self.pages()
         pages[google_modelcard.MODEL_CARD_URLS[1]] = response(403)
-        calls, _, exit_, data = self.run_main(pages)
+        _, exit_, data = self.run_main(pages)
         self.assertIn("403", str(exit_))
         self.assertIsNone(data)
 
