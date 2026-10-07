@@ -14,6 +14,7 @@ import sys
 import time
 from datetime import date
 from html.parser import HTMLParser
+from urllib.robotparser import RobotFileParser
 
 import requests
 
@@ -22,6 +23,8 @@ MODEL_CARD_URLS = [
     "https://deepmind.google/models/model-cards/gemini-3-5-flash/",
     "https://deepmind.google/models/model-cards/gemini-3-8-flash/",
 ]
+# Google を取得可としたのは、robots.txt に従うことが条件のため（R-2 §1）。実行のたびに確かめる
+ROBOTS_URL = "https://deepmind.google/robots.txt"
 PROVIDER = "Google"
 # 表には他社モデル（Claude・GPT など）の列も並ぶ。取り込むのは自社モデルの値だけ（R-1 §4-6）
 OWN_MODEL_PREFIX = "Gemini"
@@ -108,12 +111,23 @@ def _expand(rows):
     return grid
 
 
+# 値として読める形。ここに全体が合わないものは、黙って取り込まず「解釈できない値」にする
+_VALUE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(%?)")
+_NO_VALUE = {"", "—", "–", "-"}
+
+
+def _clean_value(text):
+    """桁区切りのカンマと、末尾の脚注の記号を除く。"""
+    return re.sub(r"[*†‡§]+$", "", re.sub(r"(?<=\d),(?=\d{3})", "", text)).strip()
+
+
 def _join(*parts):
     return " / ".join(p for p in parts if p)
 
 
 def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
-    """モデルカードの HTML から、自社モデルのスコアのレコードと、取り込まなかった件数を返す。"""
+    """モデルカードの HTML から、自社モデルのスコアのレコード、取り込まなかった件数、
+    解釈できなかった値（照合する人が見られるように呼び出し側で出す）を返す。"""
     parser = _TableParser()
     parser.feed(html)
     # ベンチマーク表は、見出し行に "Benchmark" がある最初の表
@@ -142,6 +156,7 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
         "値なし（—・空欄）": 0,
         "料金の行（R-6 で扱う）": 0,
     }
+    unreadable = []
     for row in grid[1:]:
         bench_cell = row[bench_idx][0]
         notes = _join(*(row[i][0]["text"] + " " + row[i][0]["small"] for i in range(bench_idx + 1, first_model_idx)))
@@ -156,9 +171,13 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
             if text.startswith("$"):
                 skipped["料金の行（R-6 で扱う）"] += 1
                 continue
-            m = re.match(r"(-?\d+(?:\.\d+)?)\s*(%?)", text)
-            if not m:
+            value = _clean_value(text)
+            if value in _NO_VALUE:
                 skipped["値なし（—・空欄）"] += 1
+                continue
+            m = _VALUE.fullmatch(value)
+            if not m:
+                unreadable.append({"model": model, "benchmark": bench_cell["text"], "raw_value": text})
                 continue
             unit = "%" if m.group(2) else ("Elo" if notes.lower() == "elo" else None)
             condition = _join("" if notes.lower() == "elo" else notes, cell["small"])
@@ -180,12 +199,13 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
                     "retrieval_method": "script",
                 }
             )
-    return records, skipped
+    return records, skipped, unreadable
 
 
 def fetch(url):
-    # 再試行はしない。403・429 などが返ったら止める（回避しない）
-    res = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30)
+    # 再試行はしない。403・429 などが返ったら止める（回避しない）。
+    # リダイレクトは追わない：移動先は R-2 の判定を受けていないサイトかもしれず、事後の確認では触れること自体を防げない
+    res = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30, allow_redirects=False)
     if res.status_code != 200:
         raise FetchStopped(f"{url} が {res.status_code} を返した。取得を止める")
     return res.text
@@ -199,15 +219,22 @@ def main():
 
     today = date.today().isoformat()
     all_records = []
-    for n, url in enumerate(MODEL_CARD_URLS):
-        if n:
+    try:
+        robots = RobotFileParser()
+        robots.parse(fetch(ROBOTS_URL).splitlines())
+        for url in MODEL_CARD_URLS:
+            if not robots.can_fetch(USER_AGENT, url):
+                sys.exit(f"{url} は robots.txt で禁止されている。取得を止める")
+        for url in MODEL_CARD_URLS:
+            # robots.txt の取得も 1 回のアクセスなので、すべてのページの前に間隔を空ける
             time.sleep(MIN_INTERVAL_SEC)
-        try:
-            records, skipped = parse_modelcard(fetch(url), url, args.by, today)
-        except FetchStopped as e:
-            sys.exit(str(e))
-        print(f"{url}: {len(records)} 件。取り込まなかった: {skipped}", file=sys.stderr)
-        all_records.extend(records)
+            records, skipped, unreadable = parse_modelcard(fetch(url), url, args.by, today)
+            print(f"{url}: {len(records)} 件。取り込まなかった: {skipped}", file=sys.stderr)
+            for u in unreadable:
+                print(f"  解釈できない値（要確認）: {u['model']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
+            all_records.extend(records)
+    except FetchStopped as e:
+        sys.exit(str(e))
 
     with open(args.out, "w", encoding="utf-8") as f:
         json.dump({"records": all_records}, f, ensure_ascii=False, indent=2)
