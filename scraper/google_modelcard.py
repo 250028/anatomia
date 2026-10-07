@@ -181,6 +181,7 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
                 continue
             unit = "%" if m.group(2) else ("Elo" if notes.lower() == "elo" else None)
             condition = _join("" if notes.lower() == "elo" else notes, cell["small"])
+            # 出力の形は暫定。§3-3【案】が決まったら合わせる（§3-3 にない項目: as_of・source_category・benchmark_description・raw_value）
             records.append(
                 {
                     "provider": PROVIDER,
