@@ -2,9 +2,9 @@
 
 > **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの。対象は収集側（Python）で、画面側（§6-2 の Next.js）の環境は含まない\
 > **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する。ライブラリは R-9 で確定し、一覧は `requirements.txt` を正とする（この文書には書き写さない）。バージョンを決める場所（§8 Q-3 に含めるか、§6-2 で決めるか）は未定で、リーダーの判断を仰ぐ。確定後は §6-2 を正とし、この文書は参照にする案\
-> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを作成者が確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に作成者が 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで作成者が確認した（収集スクリプトのコンテナ実行は未確認）\
+> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを作成者が確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に作成者が 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）と、WSL の Ubuntu 24.04 に直接入れた Docker Engine（Docker Desktop なし）のどちらでも、`docker run --rm hello-world` が通ることまで作成者が確認した（Docker Engine は 2026-10-08。収集スクリプトのコンテナ実行は未確認）\
 > **更新のしかた**：上書き（最新が正）\
-> **最終更新**：2026-10-07
+> **最終更新**：2026-10-08
 
 ## 1. 入れるもの
 
@@ -64,7 +64,7 @@ gh auth login
 
 収集スクリプトを、Python のバージョンを固定した環境（コンテナ）で動かすために使う想定。企画書にはまだ書かれていない【案】で、使うことが決まったら企画書 §6-2 に反映する。`Dockerfile` もまだない（必要になったときに別の PR で作る）。
 
-**Windows + WSL の場合（Docker Desktop を使う）**
+**Windows + WSL の場合（A. Docker Desktop を使う）**
 
 1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) を Windows に入れる。
 2. Docker Desktop の Settings → Resources → WSL integration で、使っている Ubuntu をオンにして「Apply & restart」を押す。
@@ -75,8 +75,35 @@ docker --version
 docker run --rm hello-world
 ```
 
-- Ubuntu の中に Docker を入れ直す必要はない（Docker Desktop が WSL とつながる）。
+- A の場合、Ubuntu の中に Docker を入れ直す必要はない（Docker Desktop が WSL とつながる）。
 - Docker Desktop には利用条件（ライセンス）がある。職場や学校のパソコンで使う人は、各自で確認する。
+
+**Windows + WSL の場合（B. Ubuntu に Docker Engine を直接入れる。Docker Desktop は不要）**
+
+前提：WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
+
+```bash
+sudo apt-get update && sudo apt-get install -y ca-certificates curl
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $VERSION_CODENAME) stable" | sudo tee /etc/apt/sources.list.d/docker.list >/dev/null
+sudo apt-get update
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+sudo usermod -aG docker $USER && sudo systemctl enable --now docker
+```
+
+確認する。`which docker` が `/usr/bin/docker` なら、Docker Desktop ではなく Ubuntu 側が使われている。
+
+```bash
+hash -r
+which docker
+docker run --rm hello-world
+```
+
+- `docker` グループに入っていると、`sudo` なしで `docker` を使える。このグループは root 相当の権限を持つので、自分専用の環境で使う。
+- Docker Desktop の WSL integration が残っていると、どちらの `docker` を使っているか分かりにくい。使わないなら integration をオフにするか、アンインストールする。
+- 手順はそのまま実行して通ることを作成者が確認した（2026-10-08、Ubuntu 24.04）。
 
 **Docker を使っても変わらないこと**
 
