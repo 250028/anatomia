@@ -2,7 +2,7 @@
 
 > **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの\
 > **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する（ライブラリは R-9 で確定）。確定したら、この文書と `requirements.txt` を合わせる\
-> **動作確認**：手順 4・5 の `requirements.txt` とテスト（`tests/`）は #9 に入っていて、main にはまだない。#9 のブランチ（`3c94fc8`）で、Python 3.12.3（Ubuntu 24.04）の venv に `pip install -r requirements.txt` を入れ、`python -m unittest discover tests` が 22 件 OK になることまで確認した。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで確認した（収集スクリプトのコンテナ実行は未確認）。**main での確認は、#9 のマージ後**\
+> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover tests`）が 22 件 OK になることを確認した。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで確認した（収集スクリプトのコンテナ実行は未確認）\
 > **更新のしかた**：上書き（最新が正）
 
 ## 1. 入れるもの
@@ -47,7 +47,6 @@ pip install -r requirements.txt
 python -m unittest discover tests
 ```
 
-- 手順 4・5 は、#9 が main にマージされてから使える（それまでは `requirements.txt` と `tests/` が main にない）。
 - 次回以降、作業を始めるときは `cd ~/workspace/anatomia && source .venv/bin/activate` だけ実行する。
 - `(.venv)` がプロンプトの先頭に出ていれば、仮想環境が有効になっている。
 - Ubuntu 24.04 では、仮想環境の外で `pip install` するとエラーになる。**必ず仮想環境を有効にしてから入れる。**
