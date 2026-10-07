@@ -2,7 +2,7 @@
 
 > **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの。対象は収集側（Python）で、画面側（§6-2 の Next.js）の環境は含まない\
 > **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する。ライブラリは R-9 で確定し、一覧は `requirements.txt` を正とする（この文書には書き写さない）。バージョンを決める場所（§8 Q-3 に含めるか、§6-2 で決めるか）は未定で、リーダーの判断を仰ぐ。確定後は §6-2 を正とし、この文書は参照にする案\
-> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで確認した（収集スクリプトのコンテナ実行は未確認）\
+> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを作成者が確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に作成者が 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで作成者が確認した（収集スクリプトのコンテナ実行は未確認）\
 > **更新のしかた**：上書き（最新が正）\
 > **最終更新**：2026-10-07
 
@@ -14,12 +14,12 @@
 | Git | 最新 | 必須 | リポジトリの取得・PR |
 | GitHub CLI(`gh`) | 最新 | 任意 | ターミナルから GitHub にログイン・PR 操作 |
 | Python のライブラリ | `requirements.txt` を正とする | 必須 | 収集スクリプトの実行。一覧は R-9 で確定する（§6-2）。ここには書き写さない |
-| Docker | 最新 | 任意(使う予定) | 収集スクリプトを、全員が同じ Python の環境で動かす |
+| Docker | 最新 | 任意【案】 | 収集スクリプトを、全員が同じ Python の環境で動かす |
 | Claude Code | 最新 | 任意 | AI によるコード作成の補助 |
 
 **Python を 3.12 にする【案】の理由**:
 
-- Ubuntu 24.04 の標準の Python が 3.12.3 である（2026-10-07、24.04.5 で `python3 --version` を確認した）。仮想環境用の `python3-venv` は、apt で別に入れる。
+- Ubuntu 24.04 の標準の Python が 3.12.3 である（2026-10-07、24.04.5 で `python3 --version` を作成者が確認した）。仮想環境用の `python3-venv` は、apt で別に入れる。
 - 全員が同じ版にそろえると、版の違いで動作が変わることがない（§6-2「バージョンはチームで固定」の趣旨）。
 - 新しすぎる版は、ライブラリの対応が遅れることがある（一般的な傾向で、このリポジトリのライブラリでは未確認）。
 
@@ -48,7 +48,7 @@ python -m unittest discover -s tests -t .
 
 - 次回以降、作業を始めるときは `cd ~/workspace/anatomia && source .venv/bin/activate` だけ実行する。
 - `(.venv)` がプロンプトの先頭に出ていれば、仮想環境が有効になっている。
-- Ubuntu 24.04 では、仮想環境の外で `pip install` すると `externally-managed-environment` のエラーになる（24.04 で確認済み）。**必ず仮想環境を有効にしてから入れる。**
+- Ubuntu 24.04 では、仮想環境の外で `pip install` すると `externally-managed-environment` のエラーになる（作成者が 24.04 で確認済み）。**必ず仮想環境を有効にしてから入れる。**
 - `.venv` は `.gitignore` に入っているので、commit されない。
 
 ## 3. 任意の道具
@@ -80,8 +80,8 @@ docker run --rm hello-world
 
 **Docker を使っても変わらないこと**
 
-- 取得は**メンバーが手動で実行する**。コンテナの自動起動・定期実行（`restart` の設定や cron など）は設定しない（AGENTS.md 禁則 3）。
-- 取得したページの本文はリポジトリに入れない（AGENTS.md 禁則 6）。コンテナの出力先を、リポジトリの中に置くときは注意する。
+- 取得は**メンバーが手動で実行する**。コンテナの自動起動・定期実行（`restart` の設定や cron など）は設定しない（企画書 §6-1。エージェント向けは AGENTS.md 禁則 3）。
+- 取得したページの本文はリポジトリに入れない（企画書 §3-2 ①・§6-3。エージェント向けは AGENTS.md 禁則 6）。本文をファイルに保存するときは、コンテナの出力先をリポジトリの外にする。
 - Docker を使わなくても、§2 の手順（venv）で同じスクリプトを動かせる状態を保つ。
 
 ### Claude Code
