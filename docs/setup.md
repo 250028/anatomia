@@ -1,28 +1,27 @@
-# 開発環境のセットアップ(案)
+# 開発環境のセットアップ【案】
 
-> **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの\
-> **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する（ライブラリは R-9 で確定）。確定したら、この文書と `requirements.txt` を合わせる\
-> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover tests`）が 22 件 OK になることを確認した。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで確認した（収集スクリプトのコンテナ実行は未確認）\
-> **更新のしかた**：上書き（最新が正）
+> **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの。対象は収集側（Python）で、画面側（§6-2 の Next.js）の環境は含まない\
+> **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する。ライブラリは R-9 で確定し、一覧は `requirements.txt` を正とする（この文書には書き写さない）。バージョンを決める場所（§8 Q-3 に含めるか、§6-2 で決めるか）は未定で、リーダーの判断を仰ぐ。確定後は §6-2 を正とし、この文書は参照にする案\
+> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）で `docker run --rm hello-world` が通ることまで確認した（収集スクリプトのコンテナ実行は未確認）\
+> **更新のしかた**：上書き（最新が正）\
+> **最終更新**：2026-10-07
 
 ## 1. 入れるもの
 
 | 道具 | 版 | 必須か | 用途 |
 | --- | --- | --- | --- |
-| Python | **3.12 系(案)** | 必須 | 収集スクリプトの実行 |
+| Python | **3.12 系【案】** | 必須 | 収集スクリプトの実行 |
 | Git | 最新 | 必須 | リポジトリの取得・PR |
 | GitHub CLI(`gh`) | 最新 | 任意 | ターミナルから GitHub にログイン・PR 操作 |
-| requests | 最新 | 必須 | ページの取得 |
-| beautifulsoup4、lxml | 最新 | 必須(案) | HTML の解析 |
-| Playwright、pdfplumber | 最新 | 必要になった人だけ | JavaScript で描画されるページ、PDF の読み取り |
+| Python のライブラリ | `requirements.txt` を正とする | 必須 | 収集スクリプトの実行。一覧は R-9 で確定する（§6-2）。ここには書き写さない |
 | Docker | 最新 | 任意(使う予定) | 収集スクリプトを、全員が同じ Python の環境で動かす |
 | Claude Code | 最新 | 任意 | AI によるコード作成の補助 |
 
-**Python を 3.12 にする案の理由**:
+**Python を 3.12 にする【案】の理由**:
 
-- Ubuntu 24.04(WSL の最新版)に標準で入っていて、追加の手順が要らない。
-- 新しすぎると、ライブラリの対応が遅れることがある。
-- 3.12 で動くコードは、それ以降の版でも動く。逆は成り立たない(3.14 で書いたコードが 3.12 で動かないことがある)。
+- Ubuntu 24.04 の標準の Python が 3.12.3 である（2026-10-07、24.04.5 で `python3 --version` を確認した）。仮想環境用の `python3-venv` は、apt で別に入れる。
+- 全員が同じ版にそろえると、版の違いで動作が変わることがない（§6-2「バージョンはチームで固定」の趣旨）。
+- 新しすぎる版は、ライブラリの対応が遅れることがある（一般的な傾向で、このリポジトリのライブラリでは未確認）。
 
 ## 2. 手順(Linux / WSL の Ubuntu 24.04)
 
@@ -44,12 +43,12 @@ pip install -U pip
 pip install -r requirements.txt
 
 # 5. 動作確認(テスト)
-python -m unittest discover tests
+python -m unittest discover -s tests -t .
 ```
 
 - 次回以降、作業を始めるときは `cd ~/workspace/anatomia && source .venv/bin/activate` だけ実行する。
 - `(.venv)` がプロンプトの先頭に出ていれば、仮想環境が有効になっている。
-- Ubuntu 24.04 では、仮想環境の外で `pip install` するとエラーになる。**必ず仮想環境を有効にしてから入れる。**
+- Ubuntu 24.04 では、仮想環境の外で `pip install` すると `externally-managed-environment` のエラーになる（24.04 で確認済み）。**必ず仮想環境を有効にしてから入れる。**
 - `.venv` は `.gitignore` に入っているので、commit されない。
 
 ## 3. 任意の道具
@@ -95,11 +94,9 @@ cd ~/workspace/anatomia && claude
 
 初回はブラウザでのログインと、フォルダを信頼するかの確認が出る。
 
-## 4. Windows(WSL を使わない場合)
+## 4. Windows
 
-- Python 3.12 を <https://www.python.org/downloads/> から入れる(「Add python.exe to PATH」にチェックを入れる)。
-- 仮想環境の有効化は、PowerShell で `.venv\Scripts\Activate.ps1` を実行する。それ以外は上の手順と同じ。
-- 迷ったら WSL(Ubuntu 24.04)を入れるほうが、手順を揃えられる。
+WSL（Ubuntu 24.04）を使う。WSL なしの Windows 単体の手順は、確かめていないので書かない。
 
 ## 5. 困ったとき
 
