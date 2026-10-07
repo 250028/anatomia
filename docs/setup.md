@@ -15,6 +15,7 @@
 | requests | 最新 | 必須 | ページの取得 |
 | beautifulsoup4、lxml | 最新 | 必須(案) | HTML の解析 |
 | Playwright、pdfplumber | 最新 | 必要になった人だけ | JavaScript で描画されるページ、PDF の読み取り |
+| Docker | 最新 | 任意(使う予定) | 収集スクリプトを、全員が同じ Python の環境で動かす |
 | Claude Code | 最新 | 任意 | AI によるコード作成の補助 |
 
 **Python を 3.12 にする案の理由**:
@@ -60,6 +61,30 @@ python -m unittest discover tests
 sudo apt install -y gh
 gh auth login
 ```
+
+### Docker
+
+収集スクリプトを、Python のバージョンを固定した環境（コンテナ）で動かすために使う想定。企画書にはまだ書かれていない【案】で、使うことが決まったら企画書 §6-2 に反映する。`Dockerfile` もまだない（必要になったときに別の PR で作る）。
+
+**Windows + WSL の場合（Docker Desktop を使う）**
+
+1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) を Windows に入れる。
+2. Docker Desktop の Settings → Resources → WSL integration で、使っている Ubuntu をオンにして「Apply & restart」を押す。
+3. Ubuntu のターミナルで確認する。
+
+```bash
+docker --version
+docker run --rm hello-world
+```
+
+- Ubuntu の中に Docker を入れ直す必要はない（Docker Desktop が WSL とつながる）。
+- Docker Desktop には利用条件（ライセンス）がある。職場や学校のパソコンで使う人は、各自で確認する。
+
+**Docker を使っても変わらないこと**
+
+- 取得は**メンバーが手動で実行する**。コンテナの自動起動・定期実行（`restart` の設定や cron など）は設定しない（AGENTS.md 禁則 3）。
+- 取得したページの本文はリポジトリに入れない（AGENTS.md 禁則 6）。コンテナの出力先を、リポジトリの中に置くときは注意する。
+- Docker を使わなくても、§2 の手順（venv）で同じスクリプトを動かせる状態を保つ。
 
 ### Claude Code
 
