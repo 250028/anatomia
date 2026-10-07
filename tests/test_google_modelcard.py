@@ -46,6 +46,7 @@ VALUE_FORMS = """
 <tr><th>Bench I</th><td></td><td>2.1x faster</td></tr>
 <tr><th>Bench J</th><td></td><td>Not supported</td></tr>
 <tr><th>Bench K</th><td></td><td>—</td></tr>
+<tr><th>Bench L</th><td></td><td>1,2345</td></tr>
 </tbody></table>
 """
 
@@ -117,7 +118,7 @@ class ValueFormsTest(unittest.TestCase):
 
     def test_読めない値は黙って丸めず_別に数える(self):
         self.assertEqual([(u["benchmark"], u["raw_value"]) for u in self.unreadable],
-                         [("Bench I", "2.1x faster"), ("Bench J", "Not supported")])
+                         [("Bench I", "2.1x faster"), ("Bench J", "Not supported"), ("Bench L", "1,2345")])
 
     def test_ダッシュは値なしに数える(self):
         self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
@@ -185,6 +186,30 @@ class MainTest(unittest.TestCase):
         calls, _, exit_, _ = self.run_main(self.pages(robots=response(200, "User-agent: *\nDisallow: /models/\n")))
         self.assertIn("robots.txt", str(exit_))
         self.assertEqual(calls, [google_modelcard.ROBOTS_URL])
+
+    def test_robots_の禁止を_Allow_や記法に惑わされず見つける(self):
+        # 標準ライブラリの RobotFileParser は、このうち、Allow の後の Disallow・ワイルドカード・HTML を取得可と判定する（PR #9 のレビューで確認）
+        cases = {
+            "Allow の後の Disallow": "User-agent: *\nAllow: /\nDisallow: /models/\n",
+            "ワイルドカード": "User-agent: *\nDisallow: /models/*\n",
+            "途中のワイルドカード": "User-agent: *\nDisallow: /*/model-cards/\n",
+            "単純な Disallow": "User-agent: *\nDisallow: /models/\n",
+            "末尾の $": "User-agent: *\nDisallow: /models/model-cards/gemini-3-5-flash/$\n",
+            "自分の User-agent": "User-agent: Anatomia-class-project\nDisallow: /\n",
+            "HTML が 200 で返った": "<html><body>Enable JavaScript and cookies</body></html>",
+        }
+        for name, body in cases.items():
+            with self.subTest(name):
+                calls, _, exit_, data = self.run_main(self.pages(robots=response(200, body)))
+                self.assertIsNotNone(exit_)
+                self.assertIsNone(data)
+                self.assertEqual(calls, [google_modelcard.ROBOTS_URL])
+
+    def test_当てはまらない_Disallow_では止まらない(self):
+        body = "User-agent: *\nAllow: /\nDisallow: /search\nDisallow:\n\nUser-agent: OtherBot\nDisallow: /\n"
+        _, _, exit_, data = self.run_main(self.pages(robots=response(200, body)))
+        self.assertIsNone(exit_)
+        self.assertTrue(data["records"])
 
     def test_robots_が200以外ならページを取らずに止まる(self):
         calls, _, exit_, _ = self.run_main(self.pages(robots=response(404)))

@@ -14,7 +14,7 @@ import sys
 import time
 from datetime import date
 from html.parser import HTMLParser
-from urllib.robotparser import RobotFileParser
+from urllib.parse import urlparse
 
 import requests
 
@@ -118,7 +118,7 @@ _NO_VALUE = {"", "—", "–", "-"}
 
 def _clean_value(text):
     """桁区切りのカンマと、末尾の脚注の記号を除く。"""
-    return re.sub(r"[*†‡§]+$", "", re.sub(r"(?<=\d),(?=\d{3})", "", text)).strip()
+    return re.sub(r"[*†‡§]+$", "", re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)).strip()
 
 
 def _join(*parts):
@@ -211,6 +211,47 @@ def fetch(url):
     return res.text
 
 
+def check_robots(text, urls):
+    """robots.txt の本文を読み、urls のどれかに当てはまる Disallow が 1 つでもあれば止める。
+
+    標準ライブラリの RobotFileParser は、最初に合った規則で決め、`*`・`$` を解釈しないので、
+    `Allow: /` の後の `Disallow: /models/` などを取得可と判定する。ここでは安全側に倒し、
+    Allow の有無にかかわらず、当てはまる Disallow があれば止める（R-2 §1 の条件は robots.txt 準拠）。
+    """
+    groups = []
+    agents, rules, in_rules = [], [], False
+    for raw in text.splitlines():
+        line = raw.split("#", 1)[0].strip()
+        if ":" not in line:
+            continue
+        field, value = (x.strip() for x in line.split(":", 1))
+        field = field.lower()
+        if field == "user-agent":
+            if in_rules:
+                groups.append((agents, rules))
+                agents, rules, in_rules = [], [], False
+            agents.append(value.lower())
+        elif field in ("allow", "disallow"):
+            in_rules = True
+            rules.append((field, value))
+    groups.append((agents, rules))
+    if not any(a for a, _ in groups):
+        raise FetchStopped("robots.txt として読めない（User-agent の行がない）。取得を止める")
+
+    name = USER_AGENT.split()[0].split("/")[0].lower()
+    for agents, rules in groups:
+        if "*" not in agents and not any(a and a in name for a in agents):
+            continue
+        for field, value in rules:
+            if field != "disallow" or not value:
+                continue
+            pattern = re.escape(value).replace(r"\*", ".*")
+            pattern = pattern[:-2] + "$" if pattern.endswith(r"\$") else pattern
+            for url in urls:
+                if re.match(pattern, urlparse(url).path):
+                    raise FetchStopped(f"{url} は robots.txt で禁止されている（Disallow: {value}）。取得を止める")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--by", required=True, help="取得者（実行したメンバーの名前）")
@@ -220,11 +261,7 @@ def main():
     today = date.today().isoformat()
     all_records = []
     try:
-        robots = RobotFileParser()
-        robots.parse(fetch(ROBOTS_URL).splitlines())
-        for url in MODEL_CARD_URLS:
-            if not robots.can_fetch(USER_AGENT, url):
-                sys.exit(f"{url} は robots.txt で禁止されている。取得を止める")
+        check_robots(fetch(ROBOTS_URL), MODEL_CARD_URLS)
         for url in MODEL_CARD_URLS:
             # robots.txt の取得も 1 回のアクセスなので、すべてのページの前に間隔を空ける
             time.sleep(MIN_INTERVAL_SEC)
