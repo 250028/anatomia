@@ -207,6 +207,8 @@ class MainTest(unittest.TestCase):
             "単純な Disallow": "User-agent: *\nDisallow: /models/\n",
             "末尾の $": "User-agent: *\nDisallow: /models/model-cards/gemini-3-5-flash/$\n",
             "自分の User-agent": "User-agent: Anatomia-class-project\nDisallow: /\n",
+            "先頭に BOM（UTF-8）": "\ufeffUser-agent: *\nDisallow: /models/\n\nUser-agent: Googlebot\nAllow: /\n",
+            "先頭に BOM（ISO-8859-1 で読んだ）": "ï»¿User-agent: *\nDisallow: /models/\n\nUser-agent: Googlebot\nAllow: /\n",
             "HTML が 200 で返った": "<html><body>Enable JavaScript and cookies</body></html>",
         }
         for name, body in cases.items():

@@ -33,7 +33,7 @@ USER_AGENT = "Anatomia-class-project (manual run)"
 
 
 class FetchStopped(Exception):
-    """403・429 などが返った。回避せず、そのサイトでの取得を止める（企画書 §6-3）。"""
+    """取得を止める理由があった（200 以外・robots.txt の禁止など）。回避せず、そのサイトでの取得を止める（企画書 §6-3）。"""
 
 
 class _TableParser(HTMLParser):
@@ -232,6 +232,10 @@ def check_robots(text, urls):
                 agents, rules, in_rules = [], [], False
             agents.append(value.lower())
         elif field in ("allow", "disallow"):
+            # 先頭の BOM（UTF-8、または ISO-8859-1 で読んだ ï»¿）で最初の User-agent の行を読み落とすと、
+            # その下の Disallow が、どの User-agent にも当てはまらないまま無視される。読み方が分からないときは止める
+            if not agents:
+                raise FetchStopped("robots.txt の User-agent の前に規則がある（読み方が分からない）。取得を止める")
             in_rules = True
             rules.append((field, value))
     groups.append((agents, rules))
