@@ -82,7 +82,7 @@ docker run --rm hello-world
 
 **Ubuntu 24.04 の場合（B. Ubuntu に Docker Engine を直接入れる。Docker Desktop は不要）**
 
-前提：WSL の場合は、systemd が有効であること（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。WSL なしの Ubuntu 24.04 でも、この前提を除けばほぼ同じ手順のはずだが、WSL なしでは試していない。有効かどうかは `ps -p 1 -o comm=` で確かめ、`systemd` と出れば有効。`systemctl` が「System has not been booted with systemd」と出るなら無効なので、`/etc/wsl.conf` に上の2行を書き、PowerShell で `wsl --shutdown` してから Ubuntu を開き直す（無効だったときの手順は一般的な知識で、作成者は試していない）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
+前提：WSL の場合は、systemd が有効であること（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。有効かどうかは `ps -p 1 -o comm=` で確かめ、`systemd` と出れば有効。`systemctl` が「System has not been booted with systemd」と出るなら無効なので、`/etc/wsl.conf` に上の2行を `sudo` で書き、PowerShell で `wsl --shutdown` してから Ubuntu を開き直す（無効だったときの手順は一般的な知識で、作成者は試していない）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。WSL なしの Ubuntu 24.04 でも、systemd の前提を除けばほぼ同じ手順のはずだが、WSL なしでは試していない。
 
 ```bash
 sudo apt-get update && sudo apt-get install -y ca-certificates curl
