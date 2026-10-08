@@ -95,7 +95,7 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker $USER && sudo systemctl enable --now docker
 ```
 
-`docker` グループへの追加は、ログインし直すまで今のターミナルに反映されないのが一般的なので、**ターミナルを開き直す**（または `newgrp docker` を実行する）。そのうえで確認する（`docker` グループに入っていない状態から、同じターミナルで `sudo usermod -aG docker $USER` のあとに `docker run --rm hello-world` を実行すると `permission denied` になり、ターミナルを開き直すと通ることを、作成者が 2026-10-08 に Ubuntu 24.04 で確認した）。
+`docker` グループへの追加は、ログインし直すまで今のターミナルに反映されないのが一般的なので、**ターミナルを開き直す**（または `newgrp docker` を実行する）。そのうえで確認する（`docker` グループに入っていない状態から、同じターミナルで `sudo usermod -aG docker $USER` のあとに `docker run --rm hello-world` を実行すると `permission denied` になり、ターミナルを開き直すと通ることを、作成者が 2026-10-08 に Ubuntu 24.04 で確認した。`newgrp docker` は試していない）。
 
 ```bash
 hash -r
