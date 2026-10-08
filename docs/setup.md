@@ -64,6 +64,8 @@ gh auth login
 
 収集スクリプトを、Python のバージョンを固定した環境（コンテナ）で動かすために使う想定。企画書にはまだ書かれていない【案】で、使うことが決まったら企画書 §6-2 に反映する。`Dockerfile` もまだない（必要になったときに別の PR で作る）。
 
+A と B は、どちらか 1 つを選ぶ（両方を入れると、B の注意のとおり、どちらを使っているか分かりにくい）。A は Windows に Docker Desktop を入れる（利用条件は A の注意）。B は Ubuntu の中に入れる（systemd と `sudo` が要る）。
+
 **Windows + WSL の場合（A. Docker Desktop を使う）**
 
 1. [Docker Desktop](https://www.docker.com/products/docker-desktop/) を Windows に入れる。
@@ -78,9 +80,9 @@ docker run --rm hello-world
 - A の場合、Ubuntu の中に Docker を入れ直す必要はない（Docker Desktop が WSL とつながる）。
 - Docker Desktop には利用条件（ライセンス）がある。職場や学校のパソコンで使う人は、各自で確認する。
 
-**Windows + WSL の場合（B. Ubuntu に Docker Engine を直接入れる。Docker Desktop は不要）**
+**Ubuntu 24.04 の場合（B. Ubuntu に Docker Engine を直接入れる。Docker Desktop は不要）**
 
-前提：WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。有効かどうかは `ps -p 1 -o comm=` で確かめ、`systemd` と出れば有効。`systemctl` が「System has not been booted with systemd」と出るなら無効なので、`/etc/wsl.conf` に上の2行を書き、PowerShell で `wsl --shutdown` してから Ubuntu を開き直す（無効だったときの手順は一般的な知識で、作成者は試していない）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
+前提：WSL の場合は、systemd が有効であること（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。WSL なしの Ubuntu 24.04 でも、この前提を除けばほぼ同じ手順のはずだが、WSL なしでは試していない。有効かどうかは `ps -p 1 -o comm=` で確かめ、`systemd` と出れば有効。`systemctl` が「System has not been booted with systemd」と出るなら無効なので、`/etc/wsl.conf` に上の2行を書き、PowerShell で `wsl --shutdown` してから Ubuntu を開き直す（無効だったときの手順は一般的な知識で、作成者は試していない）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
 
 ```bash
 sudo apt-get update && sudo apt-get install -y ca-certificates curl
