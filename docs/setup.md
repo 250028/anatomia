@@ -2,7 +2,7 @@
 
 > **位置づけ**：メンバーが手元で開発環境を作るための手順。企画書 §6-2（開発環境【案】）の「Python 3（バージョンはチームで固定）」を具体にしたもの。対象は収集側（Python）で、画面側（§6-2 の Next.js）の環境は含まない\
 > **確度**：**【案】**。Python のバージョンとライブラリは、チームで確認してから確定する。ライブラリは R-9 で確定し、一覧は `requirements.txt` を正とする（この文書には書き写さない）。バージョンを決める場所（§8 Q-3 に含めるか、§6-2 で決めるか）は未定で、リーダーの判断を仰ぐ。確定後は §6-2 を正とし、この文書は参照にする案\
-> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを作成者が確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に作成者が 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）と、WSL の Ubuntu 24.04 に直接入れた Docker Engine（Docker Desktop なし）のどちらでも、`docker run --rm hello-world` が通ることまで作成者が確認した（Docker Engine は 2026-10-08。収集スクリプトのコンテナ実行は未確認）\
+> **動作確認**：main（`48e4b15`、#9 のマージ後）を `git clone` し直し、Python 3.12.3（Ubuntu 24.04）の venv で、手順 4・5（`pip install -r requirements.txt`、`python -m unittest discover -s tests -t .`）が 22 件 OK になることを作成者が確認した（Ubuntu 24.04.5 の標準の Python が 3.12.3 であること、venv の外の `pip install` が `externally-managed-environment` で失敗することも、2026-10-07 に作成者が 24.04 で確認した）。Docker は、Docker Desktop（WSL integration）と、WSL の Ubuntu 24.04 に直接入れた Docker Engine（Docker Desktop なし）のどちらでも、`docker run --rm hello-world` が通ることまで作成者が確認した（Docker Engine は 2026-10-08。`docker` グループへの追加後にターミナルを開き直す必要があることも確認した。収集スクリプトのコンテナ実行は未確認）\
 > **更新のしかた**：上書き（最新が正）\
 > **最終更新**：2026-10-08
 
@@ -95,7 +95,7 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker $USER && sudo systemctl enable --now docker
 ```
 
-`docker` グループへの追加は、ログインし直すまで今のターミナルに反映されないのが一般的なので、**ターミナルを開き直す**（または `newgrp docker` を実行する）。そのうえで確認する（一般的な知識で、同じターミナルのままで通るかは確かめていない）。
+`docker` グループへの追加は、ログインし直すまで今のターミナルに反映されないのが一般的なので、**ターミナルを開き直す**（または `newgrp docker` を実行する）。そのうえで確認する（`docker` グループに入っていない状態から、同じターミナルで `sudo usermod -aG docker $USER` のあとに `docker run --rm hello-world` を実行すると `permission denied` になり、ターミナルを開き直すと通ることを、作成者が 2026-10-08 に Ubuntu 24.04 で確認した）。
 
 ```bash
 hash -r
