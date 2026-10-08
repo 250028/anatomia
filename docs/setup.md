@@ -80,7 +80,7 @@ docker run --rm hello-world
 
 **Windows + WSL の場合（B. Ubuntu に Docker Engine を直接入れる。Docker Desktop は不要）**
 
-前提：WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
+前提：WSL で systemd が有効（`/etc/wsl.conf` に `[boot]` と `systemd=true`）。有効かどうかは `ps -p 1 -o comm=` で確かめ、`systemd` と出れば有効。`systemctl` が「System has not been booted with systemd」と出るなら無効なので、`/etc/wsl.conf` に上の2行を書き、PowerShell で `wsl --shutdown` してから Ubuntu を開き直す（無効だったときの手順は一般的な知識で、作成者は試していない）。Ubuntu 24.04 で、[Docker 公式の apt リポジトリ](https://docs.docker.com/engine/install/ubuntu/)から入れる。
 
 ```bash
 sudo apt-get update && sudo apt-get install -y ca-certificates curl
@@ -93,14 +93,15 @@ sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plug
 sudo usermod -aG docker $USER && sudo systemctl enable --now docker
 ```
 
-確認する。`which docker` が `/usr/bin/docker` なら、Docker Desktop ではなく Ubuntu 側が使われている。
+`docker` グループへの追加は、ログインし直すまで今のターミナルに反映されないのが一般的なので、**ターミナルを開き直す**（または `newgrp docker` を実行する）。そのうえで確認する（一般的な知識で、同じターミナルのままで通るかは確かめていない）。
 
 ```bash
 hash -r
-which docker
+ls -l "$(which docker)"
 docker run --rm hello-world
 ```
 
+- どちらの `docker` を使っているかは、`ls -l "$(which docker)"` でリンク先を見る（B では `/usr/bin/docker` が通常のファイルであることを作成者が確認した）。Docker Desktop の WSL integration では、Docker Desktop 側を指すリンクが置かれることがあるが、A の環境での結果は未確認。`docker info --format '{{.OperatingSystem}}'` でも見分けられる見込みだが、こちらも A では未確認。
 - `docker` グループに入っていると、`sudo` なしで `docker` を使える。このグループは root 相当の権限を持つので、自分専用の環境で使う。
 - Docker Desktop の WSL integration が残っていると、どちらの `docker` を使っているか分かりにくい。使わないなら integration をオフにするか、アンインストールする。
 - 手順はそのまま実行して通ることを作成者が確認した（2026-10-08、Ubuntu 24.04）。
