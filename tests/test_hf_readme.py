@@ -34,6 +34,18 @@ MODE_LAYOUT = """
 | Bench F | 60.0 | 68.0 | 72.0 | 65.0 | 50.0 |
 """
 
+UNREADABLE_LAYOUT = """
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| Bench G | **94.3** | 90.0 |
+| Bench H | 66.4% | 60.0 |
+| Bench I | 66.4%¹ | 60.0 |
+| Bench J | -- | 60.0 |
+| Bench K | 1,2345 | 60.0 |
+| Bench L | —* | 60.0 |
+| Bench M | 80.0 | 60.0 |
+"""
+
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
@@ -89,6 +101,32 @@ class ReadmeModeTest(unittest.TestCase):
     def test_モードのない列は名前をそのまま持ち_モードは_None(self):
         (r,) = [r for r in self.records if r["model"] == "DeepSeek-V4-Base"]
         self.assertIsNone(r["mode"])
-        
+
+class UnreadableTest(unittest.TestCase):
+    def setUp(self):
+        self.records, self.skipped, self.unreadable = parse_readme(
+            UNREADABLE_LAYOUT, "https://example.test/card", "tester", "2026-10-21"
+        )
+
+    def test_太字は外して読む(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench G"]
+        self.assertEqual(r["score"], 94.3)
+
+    def test_パーセントは外して読む(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench H"]
+        self.assertEqual(r["score"], 66.4)
+
+    def test_読めない値は黙って丸めず_別に出す(self):
+        self.assertEqual(
+            [(u["benchmark"], u["raw_value"]) for u in self.unreadable],
+            [("Bench I", "66.4%¹"), ("Bench J", "--"), ("Bench K", "1,2345")],
+        )
+
+    def test_記号付きの値なしは値なしに数える(self):
+        self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
+
+    def test_読めない値があっても残りは出る(self):
+        self.assertIn("Bench M", [r["benchmark"] for r in self.records])
+
 if __name__ == "__main__":
     unittest.main()
