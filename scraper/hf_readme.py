@@ -18,9 +18,15 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at):
             continue
         rows.append(cells)
     header = rows[0]
-    body = rows[1:]
-    records = []
     skipped = Counter()
+    body = []
+    for row in rows[1:]:
+        if all(c == "" for c in row[1:]):
+            skipped["見出し行"] += 1
+            continue
+        body.append(row)
+    records = []
+   
     for i, name in enumerate(header):
         if name.startswith("DeepSeek-"):
             for row in body:

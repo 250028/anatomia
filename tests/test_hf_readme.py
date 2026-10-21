@@ -21,6 +21,13 @@ NOTE_LAYOUT = """
 | Bench D | 3,100 | 2,900 |
 """
 
+HEADING_LAYOUT = """
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| **Coding** | | |
+| Bench E | 70.0 | 75.0 |
+"""
+
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
@@ -48,6 +55,19 @@ class ValueFormTest(unittest.TestCase):
     def test_カンマ区切りの数値は除いて読む(self):
         (r,) = [r for r in self.records if r["benchmark"] == "Bench D"]
         self.assertEqual(r["score"], 3100.0)
+
+class HeadingTest(unittest.TestCase):
+    def setUp(self):
+        self.records, self.skipped, self.unreadable = parse_readme(HEADING_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+
+    def test_見出し行は取り込まない(self):
+        self.assertEqual([r["benchmark"] for r in self.records], ["Bench E"])
+
+    def test_見出し行は値なしに数を変えず_別に数える(self):
+        self.assertEqual(self.skipped["見出し行"], 1)
+        self.assertEqual(self.skipped["値なし（—・空欄）"], 0)
+
+
 
 
 if __name__ == "__main__":
