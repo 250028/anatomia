@@ -36,11 +36,13 @@ _VALUE = re.compile(r"-?\d+(?:\.\d+)?%?")
 
 _MODES = ("Non-Think", "High", "Max")
 
+
 def _split_mode(name):
     for mode in _MODES:
         if name.endswith(" " + mode):
             return name[: -len(mode) - 1], mode
     return name, None
+
 
 def _clean_value(text):
     text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text).strip()
@@ -51,6 +53,7 @@ _SEPARATOR_CELL = re.compile(r":?-+:?")
 
 _BENCH_PAREN = re.compile(r"(.*?)\s*\(([^()]*)\)")
 
+
 def _split_benchmark(cell):
     # 末尾の括弧(Pass@1・EM など)は測定条件。Rating は単位として分ける
     m = _BENCH_PAREN.fullmatch(cell)
@@ -59,8 +62,10 @@ def _split_benchmark(cell):
     name, inner = m.groups()
     return (name, None, "Rating") if inner == "Rating" else (name, inner, None)
 
+
 def _split_row(line):
     return [c.strip() for c in line.strip().strip("|").split("|")]
+
 
 def _tables(text):
     # 見出しの直後に区切り行(---)がある連続した | の行だけを表とみなす。空行など表でない行で表は終わる
@@ -73,6 +78,7 @@ def _tables(text):
             block = []
     blocks.append(block)
     return [b for b in blocks if len(b) >= 2 and all(_SEPARATOR_CELL.fullmatch(c) for c in b[1])]
+
 
 def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     tables = _tables(text)

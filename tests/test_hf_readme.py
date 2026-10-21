@@ -78,22 +78,24 @@ SHORT_ROW_LAYOUT = """
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
-        records, skipped, unreadable = parse_readme(LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
+        records, skipped, unreadable = parse_readme(LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123")
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-V4-Pro"})
+
 
 class MissingScoreTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(DASH_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
+        self.records, self.skipped, self.unreadable = parse_readme(DASH_LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_値なしは取り込まない(self):
         self.assertEqual([r["benchmark"] for r in self.records], ["Bench A"])
 
     def test_値なしの数を数える(self):
-        self.assertEqual(self.skipped["値なし（—・空欄）"], 1) 
+        self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
+
 
 class ValueFormTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(NOTE_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
+        self.records, self.skipped, self.unreadable = parse_readme(NOTE_LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_脚注の記号は除いて読む(self):
         (r,) = [r for r in self.records if r["benchmark"] == "Bench C"]
@@ -103,9 +105,10 @@ class ValueFormTest(unittest.TestCase):
         (r,) = [r for r in self.records if r["benchmark"] == "Bench D"]
         self.assertEqual(r["score"], 3100.0)
 
+
 class HeadingTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(HEADING_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
+        self.records, self.skipped, self.unreadable = parse_readme(HEADING_LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_見出し行は取り込まない(self):
         self.assertEqual([r["benchmark"] for r in self.records], ["Bench E"])
@@ -114,9 +117,10 @@ class HeadingTest(unittest.TestCase):
         self.assertEqual(self.skipped["見出し行"], 1)
         self.assertEqual(self.skipped["値なし（—・空欄）"], 0)
 
+
 class ReadmeModeTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(MODE_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
+        self.records, self.skipped, self.unreadable = parse_readme(MODE_LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_モデル名と推論モードに分ける(self):
         got = [(r["model"], r["mode"], r["score"]) for r in self.records[:4]]
@@ -130,6 +134,7 @@ class ReadmeModeTest(unittest.TestCase):
     def test_モードのない列は名前をそのまま持ち_モードは_None(self):
         (r,) = [r for r in self.records if r["model"] == "DeepSeek-V4-Base"]
         self.assertIsNone(r["mode"])
+
 
 class UnreadableTest(unittest.TestCase):
     def setUp(self):
