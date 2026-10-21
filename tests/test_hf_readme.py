@@ -1,4 +1,11 @@
+from scraper import hf_readme
+from scraper.google_modelcard import FetchStopped
 from scraper.hf_readme import parse_readme
+from huggingface_hub.errors import HfHubHTTPError
+from pathlib import Path
+from unittest import mock
+import json
+import tempfile
 import unittest
 
 LAYOUT = """
@@ -194,6 +201,78 @@ class TableBoundaryTest(unittest.TestCase):
     def test_列の数が見出しと違う行があるときは止める(self):
         with self.assertRaises(ValueError):
             parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+class FetchReadmeTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.readme = Path(self.tmp.name) / "README.md"
+        self.readme.write_text(LAYOUT, encoding="utf-8")
+
+    def patches(self, author="deepseek-ai"):
+        info = mock.Mock(author=author, sha="abc123")
+        api = mock.patch.object(hf_readme, "HfApi", return_value=mock.Mock(model_info=mock.Mock(return_value=info)))
+        dl = mock.patch.object(hf_readme, "hf_hub_download", return_value=str(self.readme))
+        return api, dl
+
+    def test_本文と_sha_を返す(self):
+        api, dl = self.patches()
+        with api, dl:
+            self.assertEqual(hf_readme.fetch_readme("deepseek-ai/X"), (LAYOUT, "abc123"))
+
+    def test_版を固定し_保存先はリポジトリの外(self):
+        api, dl = self.patches()
+        with api, dl as download:
+            hf_readme.fetch_readme("deepseek-ai/X")
+        kw = download.call_args.kwargs
+        self.assertEqual(kw["revision"], "abc123")
+        for d in (kw["local_dir"], kw["cache_dir"]):
+            self.assertFalse(Path(d).resolve().is_relative_to(REPO_ROOT))
+
+    def test_公式組織以外のリポジトリは止める(self):
+        api, dl = self.patches(author="someone")
+        with api, dl as download:
+            with self.assertRaises(FetchStopped):
+                hf_readme.fetch_readme("someone/X")
+        download.assert_not_called()
+
+    def test_エラーが返ったら止まり_再試行しない(self):
+        err = HfHubHTTPError("429", response=mock.Mock(status_code=429, headers={}))
+        api, dl = self.patches()
+        with api, mock.patch.object(hf_readme, "hf_hub_download", side_effect=err) as download:
+            with self.assertRaises(FetchStopped):
+                hf_readme.fetch_readme("deepseek-ai/X")
+        self.assertEqual(download.call_count, 1)
+
+
+class MainTest(unittest.TestCase):
+    def run_main(self, repo_ids, out):
+        argv = ["hf_readme", "--by", "tester", "--out", str(out)]
+        with mock.patch.object(hf_readme, "REPO_IDS", repo_ids), mock.patch.object(hf_readme.time, "sleep") as sleep, \
+                mock.patch.object(hf_readme, "fetch_readme", return_value=(LAYOUT, "abc123")) as fetch, \
+                mock.patch("sys.argv", argv):
+            hf_readme.main()
+        return sleep, fetch
+
+    def test_一覧が空なら止まり_取得しない(self):
+        with tempfile.TemporaryDirectory() as d:
+            with mock.patch.object(hf_readme, "REPO_IDS", []), mock.patch("sys.argv", ["x", "--by", "t", "--out", d + "/o.json"]):
+                with self.assertRaises(SystemExit):
+                    hf_readme.main()
+
+    def test_間隔を空けて取得し_候補データを書く(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "o.json"
+            sleep, fetch = self.run_main(["deepseek-ai/X", "deepseek-ai/Y"], out)
+            records = json.loads(out.read_text(encoding="utf-8"))["records"]
+        self.assertEqual(len(records), 2)
+        self.assertEqual({r["sha"] for r in records}, {"abc123"})
+        self.assertEqual(sleep.call_count, 2)
+        sleep.assert_called_with(hf_readme.MIN_INTERVAL_SEC)
+
 
 if __name__ == "__main__":
     unittest.main()

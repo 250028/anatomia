@@ -1,6 +1,31 @@
-from collections import Counter
-import re
+"""Hugging Face の公式組織の README.md（Markdown の表）から、自社モデルのスコアを取り出す。
 
+README は huggingface_hub の hf_hub_download で生ファイルとして取る（R-2 §5）。ページを描画した
+HTML には、マージされていない PR の第三者の値が混ざるため使わない（R-1 §4-1）。
+メンバーが手動で実行する（企画書 §6-1）。取得結果は候補データで、正式データへは
+実行者以外のメンバーが出典ページと照合してから反映する（企画書 §3-2 ③）。
+
+    python3 -m scraper.hf_readme --by <取得者> --out <出力先.json>
+"""
+
+import argparse
+import json
+import re
+import sys
+import tempfile
+import time
+from collections import Counter
+from datetime import date
+
+from huggingface_hub import HfApi, hf_hub_download
+from huggingface_hub.errors import HfHubHTTPError
+
+from scraper.google_modelcard import MIN_INTERVAL_SEC, FetchStopped
+
+# 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
+# 取得元の版（Preview・正式版・V4.1-Flash）は R-3 で決める（R-1 §2）。決まるまで空にしておく
+REPO_IDS = []
+OFFICIAL_ORG = "deepseek-ai"
 
 PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
@@ -101,3 +126,50 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
                     "retrieval_method": "script",
                 })
     return records, skipped, unreadable
+
+
+def fetch_readme(repo_id):
+    """README.md の本文と、取得した版（sha）を返す。再試行はしない。エラーが返ったら止める（回避しない）。"""
+    # 保存先は一時ディレクトリ。README の本文をリポジトリに残さない（企画書 §3-2 ①・§6-3）
+    with tempfile.TemporaryDirectory() as tmp:
+        try:
+            info = HfApi().model_info(repo_id)
+            if info.author != OFFICIAL_ORG:
+                raise FetchStopped(f"{repo_id} の作者が {OFFICIAL_ORG} ではない({info.author})。取得を止める")
+            path = hf_hub_download(repo_id, "README.md", revision=info.sha, cache_dir=tmp, local_dir=tmp)
+        except HfHubHTTPError as e:
+            raise FetchStopped(f"{repo_id} の取得でエラーが返った({e})。取得を止める") from e
+        with open(path, encoding="utf-8") as f:
+            return f.read(), info.sha
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--by", required=True, help="取得者(実行したメンバーの名前)")
+    ap.add_argument("--out", required=True, help="候補データの出力先(JSON)")
+    args = ap.parse_args()
+
+    if not REPO_IDS:
+        sys.exit("取得するリポジトリが決まっていない(REPO_IDS が空。R-3 で決める)")
+    today = date.today().isoformat()
+    all_records = []
+    try:
+        for repo_id in REPO_IDS:
+            time.sleep(MIN_INTERVAL_SEC)
+            text, sha = fetch_readme(repo_id)
+            url = f"https://huggingface.co/{repo_id}"
+            records, skipped, unreadable = parse_readme(text, url, args.by, today, sha)
+            print(f"{url}: {len(records)} 件。取り込まなかった: {dict(skipped)}", file=sys.stderr)
+            for u in unreadable:
+                print(f"  解釈できない値(要確認): {u['model']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
+            all_records.extend(records)
+    except FetchStopped as e:
+        sys.exit(str(e))
+
+    with open(args.out, "w", encoding="utf-8") as f:
+        json.dump({"records": all_records}, f, ensure_ascii=False, indent=2)
+        f.write("\n")
+
+
+if __name__ == "__main__":
+    main()
