@@ -71,12 +71,12 @@ SHORT_ROW_LAYOUT = """
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
-        records, skipped, unreadable = parse_readme(LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+        records, skipped, unreadable = parse_readme(LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-V4-Pro"})
 
 class MissingScoreTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(DASH_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+        self.records, self.skipped, self.unreadable = parse_readme(DASH_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_値なしは取り込まない(self):
         self.assertEqual([r["benchmark"] for r in self.records], ["Bench A"])
@@ -86,7 +86,7 @@ class MissingScoreTest(unittest.TestCase):
 
 class ValueFormTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(NOTE_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+        self.records, self.skipped, self.unreadable = parse_readme(NOTE_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_脚注の記号は除いて読む(self):
         (r,) = [r for r in self.records if r["benchmark"] == "Bench C"]
@@ -98,7 +98,7 @@ class ValueFormTest(unittest.TestCase):
 
 class HeadingTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(HEADING_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+        self.records, self.skipped, self.unreadable = parse_readme(HEADING_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_見出し行は取り込まない(self):
         self.assertEqual([r["benchmark"] for r in self.records], ["Bench E"])
@@ -109,7 +109,7 @@ class HeadingTest(unittest.TestCase):
 
 class ReadmeModeTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, self.unreadable = parse_readme(MODE_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+        self.records, self.skipped, self.unreadable = parse_readme(MODE_LAYOUT,"https://example.test/card", "tester", "2026-10-21", "abc123")
 
     def test_モデル名と推論モードに分ける(self):
         got = [(r["model"], r["mode"], r["score"]) for r in self.records[:4]]
@@ -127,7 +127,7 @@ class ReadmeModeTest(unittest.TestCase):
 class UnreadableTest(unittest.TestCase):
     def setUp(self):
         self.records, self.skipped, self.unreadable = parse_readme(
-            UNREADABLE_LAYOUT, "https://example.test/card", "tester", "2026-10-21"
+            UNREADABLE_LAYOUT, "https://example.test/card", "tester", "2026-10-21", "abc123"
         )
 
     def test_太字は外して読む(self):
@@ -150,22 +150,50 @@ class UnreadableTest(unittest.TestCase):
     def test_読めない値があっても残りは出る(self):
         self.assertIn("Bench M", [r["benchmark"] for r in self.records])
 
+RECORD_LAYOUT = """
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| Bench S (Pass@1) | **80.5%** | 85.0 |
+| Bench T (Rating) | 2,100 | 2,000 |
+"""
+
+
+class RecordFieldTest(unittest.TestCase):
+    def setUp(self):
+        self.records, _, _ = parse_readme(RECORD_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
+
+    def test_出典と版と取得者を持つ(self):
+        r = self.records[0]
+        self.assertEqual(
+            (r["provider"], r["source_url"], r["sha"], r["retrieved_by"], r["retrieved_at"], r["retrieval_method"]),
+            ("DeepSeek", "https://example.test/card", "abc123", "tester", "2026-10-22", "script"),
+        )
+
+    def test_括弧は測定条件に分け_値の_を単位に入れる(self):
+        r = self.records[0]
+        self.assertEqual((r["benchmark"], r["condition"], r["unit"], r["raw_value"]), ("Bench S", "Pass@1", "%", "**80.5%**"))
+
+    def test_Rating_は単位に入れる(self):
+        r = self.records[1]
+        self.assertEqual((r["benchmark"], r["condition"], r["unit"], r["score"]), ("Bench T", None, "Rating", 2100.0))
+
+
 class TableBoundaryTest(unittest.TestCase):
     def test_最初の自社の列を持つ表だけを読む(self):
-        records, _, _ = parse_readme(TWO_TABLES_LAYOUT, "https://example.test/card", "tester", "2026-10-22")
+        records, _, _ = parse_readme(TWO_TABLES_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
         self.assertEqual([r["benchmark"] for r in records], ["Bench O"])
 
     def test_表がないときは止める(self):
         with self.assertRaises(ValueError):
-            parse_readme("no table here", "https://example.test/card", "tester", "2026-10-22")
+            parse_readme("no table here", "https://example.test/card", "tester", "2026-10-22", "abc123")
 
     def test_自社の列がないときは止める(self):
         with self.assertRaises(ValueError):
-            parse_readme("| | Opus-X Max |\n| --- | --- |\n| Bench R | 1.0 |", "https://example.test/card", "tester", "2026-10-22")
+            parse_readme("| | Opus-X Max |\n| --- | --- |\n| Bench R | 1.0 |", "https://example.test/card", "tester", "2026-10-22", "abc123")
 
     def test_列の数が見出しと違う行があるときは止める(self):
         with self.assertRaises(ValueError):
-            parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22")
+            parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
 
 if __name__ == "__main__":
     unittest.main()
