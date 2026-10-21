@@ -1,6 +1,12 @@
 from collections import Counter
+import re
+
 
 _NO_VALUE = {"", "—", "–", "-"}
+
+def _clean_value(text):
+    text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)
+    return re.sub(r"[*†‡§]+$", "", text).strip()
 
 def parse_readme(text, source_url, retrieved_by, retrieved_at):
     rows = []
@@ -24,6 +30,6 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at):
                 records.append({
                     "model": name,
                     "benchmark": row[0],
-                    "score": float(row[i]),
+                    "score": float(_clean_value(row[i])),
                 })
     return records, skipped, []

@@ -14,6 +14,13 @@ DASH_LAYOUT = """
 | Bench B | — | 90.0 |
 """
 
+NOTE_LAYOUT = """
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| Bench C | 37.7* | 40.0 |
+| Bench D | 3,100 | 2,900 |
+"""
+
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
@@ -23,11 +30,24 @@ class OtherCompanyColumnTest(unittest.TestCase):
 class MissingScoreTest(unittest.TestCase):
     def setUp(self):
         self.records, self.skipped, self.unreadable = parse_readme(DASH_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+
     def test_値なしは取り込まない(self):
         self.assertEqual([r["benchmark"] for r in self.records], ["Bench A"])
+
     def test_値なしの数を数える(self):
         self.assertEqual(self.skipped["値なし（—・空欄）"], 1) 
 
+class ValueFormTest(unittest.TestCase):
+    def setUp(self):
+        self.records, self.skipped, self.unreadable = parse_readme(NOTE_LAYOUT,"https://example.test/card", "tester", "2026-10-21")
+
+    def test_脚注の記号は除いて読む(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench C"]
+        self.assertEqual(r["score"], 37.7)
+
+    def test_カンマ区切りの数値は除いて読む(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench D"]
+        self.assertEqual(r["score"], 3100.0)
 
 
 if __name__ == "__main__":
