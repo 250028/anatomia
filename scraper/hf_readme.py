@@ -1,3 +1,7 @@
+from collections import Counter
+
+_NO_VALUE = {"", "—", "–", "-"}
+
 def parse_readme(text, source_url, retrieved_by, retrieved_at):
     rows = []
     for line in text.strip().splitlines():
@@ -10,12 +14,16 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at):
     header = rows[0]
     body = rows[1:]
     records = []
+    skipped = Counter()
     for i, name in enumerate(header):
         if name.startswith("DeepSeek-"):
             for row in body:
+                if row[i] in _NO_VALUE:
+                    skipped["値なし（—・空欄）"] += 1
+                    continue
                 records.append({
                     "model": name,
                     "benchmark": row[0],
                     "score": float(row[i]),
                 })
-    return records, {}, []
+    return records, skipped, []
