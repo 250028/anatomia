@@ -46,6 +46,28 @@ UNREADABLE_LAYOUT = """
 | Bench M | 80.0 | 60.0 |
 """
 
+TWO_TABLES_LAYOUT = """
+| | Opus-X Max |
+| --- | --- |
+| Bench N | 85.0 |
+
+text
+
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| Bench O | 80.0 | 85.0 |
+
+| | DeepSeek-V4-Pro Max |
+| --- | --- |
+| Bench P | 90.0 |
+"""
+
+SHORT_ROW_LAYOUT = """
+| | DeepSeek-V4-Pro High | Opus-X Max |
+| --- | --- | --- |
+| Bench Q | 80.0 |
+"""
+
 
 class OtherCompanyColumnTest(unittest.TestCase):
     def test_他社モデルの列は取り込まない(self):
@@ -127,6 +149,23 @@ class UnreadableTest(unittest.TestCase):
 
     def test_読めない値があっても残りは出る(self):
         self.assertIn("Bench M", [r["benchmark"] for r in self.records])
+
+class TableBoundaryTest(unittest.TestCase):
+    def test_最初の自社の列を持つ表だけを読む(self):
+        records, _, _ = parse_readme(TWO_TABLES_LAYOUT, "https://example.test/card", "tester", "2026-10-22")
+        self.assertEqual([r["benchmark"] for r in records], ["Bench O"])
+
+    def test_表がないときは止める(self):
+        with self.assertRaises(ValueError):
+            parse_readme("no table here", "https://example.test/card", "tester", "2026-10-22")
+
+    def test_自社の列がないときは止める(self):
+        with self.assertRaises(ValueError):
+            parse_readme("| | Opus-X Max |\n| --- | --- |\n| Bench R | 1.0 |", "https://example.test/card", "tester", "2026-10-22")
+
+    def test_列の数が見出しと違う行があるときは止める(self):
+        with self.assertRaises(ValueError):
+            parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22")
 
 if __name__ == "__main__":
     unittest.main()
