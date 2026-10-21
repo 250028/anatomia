@@ -4,6 +4,14 @@ import re
 
 _NO_VALUE = {"", "—", "–", "-"}
 
+_MODES = ("Non-Think", "High", "Max")
+
+def _split_mode(name):
+    for mode in _MODES:
+        if name.endswith(" " + mode):
+            return name[: -len(mode) - 1], mode
+    return name, None
+
 def _clean_value(text):
     text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)
     return re.sub(r"[*†‡§]+$", "", text).strip()
@@ -29,12 +37,14 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at):
    
     for i, name in enumerate(header):
         if name.startswith("DeepSeek-"):
+            model, mode = _split_mode(name)
             for row in body:
                 if row[i] in _NO_VALUE:
                     skipped["値なし（—・空欄）"] += 1
                     continue
                 records.append({
-                    "model": name,
+                    "model": model,
+                    "mode": mode,
                     "benchmark": row[0],
                     "score": float(_clean_value(row[i])),
                 })
