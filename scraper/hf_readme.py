@@ -84,17 +84,18 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     tables = _tables(text)
     if not tables:
         raise ValueError("Markdown の表が見つからない(README の構造が変わった可能性)")
-    # 表が複数あるときは、最初の自社の列を持つ表だけを読む
-    for table in tables:
-        if any(name.startswith(OWN_MODEL_PREFIX) for name in table[0]):
-            break
-    else:
+    # 表が複数あるときは、最初の自社の列を持つ表だけを読む。残りは数えて知らせる(黙って捨てない)
+    own_tables = [t for t in tables if any(name.startswith(OWN_MODEL_PREFIX) for name in t[0])]
+    if not own_tables:
         raise ValueError("DeepSeek- で始まる列を持つ表が見つからない(README の構造が変わった可能性)")
+    table = own_tables[0]
     header, rows = table[0], table[2:]
     for row in rows:
         if len(row) != len(header):
             raise ValueError(f"列の数が見出し({len(header)})と違う行がある({len(row)}): {row[0]!r}")
     skipped = Counter()
+    if len(own_tables) > 1:
+        skipped["読まなかった表（自社の列あり）"] = len(own_tables) - 1
     body = []
     for row in rows:
         if all(c == "" for c in row[1:]):
@@ -112,7 +113,7 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
                     skipped["値なし（—・空欄）"] += 1
                     continue
                 if not _VALUE.fullmatch(value):
-                    unreadable.append({"model": model, "benchmark": row[0], "raw_value": row[i]})
+                    unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
                     continue
                 benchmark, condition, unit = _split_benchmark(row[0])
                 # 出力の形は暫定。§3-3【案】が決まったら合わせる(google_modelcard.py の records と項目をそろえている)
@@ -142,6 +143,8 @@ def fetch_readme(repo_id):
             info = HfApi().model_info(repo_id)
             if info.author != OFFICIAL_ORG:
                 raise FetchStopped(f"{repo_id} の作者が {OFFICIAL_ORG} ではない({info.author})。取得を止める")
+            # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
+            time.sleep(MIN_INTERVAL_SEC)
             path = hf_hub_download(repo_id, "README.md", revision=info.sha, cache_dir=tmp, local_dir=tmp)
         except HfHubHTTPError as e:
             raise FetchStopped(f"{repo_id} の取得でエラーが返った({e})。取得を止める") from e
@@ -167,7 +170,7 @@ def main():
             records, skipped, unreadable = parse_readme(text, url, args.by, today, sha)
             print(f"{url}: {len(records)} 件。取り込まなかった: {dict(skipped)}", file=sys.stderr)
             for u in unreadable:
-                print(f"  解釈できない値(要確認): {u['model']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
+                print(f"  解釈できない値(要確認): {u['model']} / {u['mode']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
             all_records.extend(records)
     except FetchStopped as e:
         sys.exit(str(e))

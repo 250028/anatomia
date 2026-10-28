@@ -69,6 +69,12 @@ text
 | Bench P | 90.0 |
 """
 
+SAME_UNREADABLE_LAYOUT = """
+| | DeepSeek-V4-Pro Non-Think | DeepSeek-V4-Pro High | DeepSeek-V4-Pro Max |
+| --- | --- | --- | --- |
+| Bench U | -- | -- | -- |
+"""
+
 SHORT_ROW_LAYOUT = """
 | | DeepSeek-V4-Pro High | Opus-X Max |
 | --- | --- | --- |
@@ -156,6 +162,12 @@ class UnreadableTest(unittest.TestCase):
             [("Bench I", "66.4%¹"), ("Bench J", "--"), ("Bench K", "1,2345")],
         )
 
+    def test_読めない値にはモードを入れ_同じ行の列を区別できる(self):
+        _, _, unreadable = parse_readme(
+            SAME_UNREADABLE_LAYOUT, "https://example.test/card", "tester", "2026-10-28", "abc123"
+        )
+        self.assertEqual([u["mode"] for u in unreadable], ["Non-Think", "High", "Max"])
+
     def test_記号付きの値なしは値なしに数える(self):
         self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
 
@@ -195,6 +207,14 @@ class TableBoundaryTest(unittest.TestCase):
         records, _, _ = parse_readme(TWO_TABLES_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
         self.assertEqual([r["benchmark"] for r in records], ["Bench O"])
 
+    def test_読まなかった自社の表の数を知らせる(self):
+        _, skipped, _ = parse_readme(TWO_TABLES_LAYOUT, "https://example.test/card", "tester", "2026-10-28", "abc123")
+        self.assertEqual(skipped["読まなかった表（自社の列あり）"], 1)
+
+    def test_自社の表が1つなら読まなかった表は数えない(self):
+        _, skipped, _ = parse_readme(LAYOUT, "https://example.test/card", "tester", "2026-10-28", "abc123")
+        self.assertEqual(skipped["読まなかった表（自社の列あり）"], 0)
+
     def test_表がないときは止める(self):
         with self.assertRaises(ValueError):
             parse_readme("no table here", "https://example.test/card", "tester", "2026-10-22", "abc123")
@@ -216,6 +236,9 @@ class FetchReadmeTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.readme = Path(self.tmp.name) / "README.md"
         self.readme.write_text(LAYOUT, encoding="utf-8")
+        patcher = mock.patch.object(hf_readme.time, "sleep")
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
     def patches(self, author="deepseek-ai"):
         info = mock.Mock(author=author, sha="abc123")
@@ -243,6 +266,18 @@ class FetchReadmeTest(unittest.TestCase):
             with self.assertRaises(FetchStopped):
                 hf_readme.fetch_readme("someone/X")
         download.assert_not_called()
+
+    def test_API_と_README_の取得の間にも間隔を空ける(self):
+        calls = mock.Mock()
+        api_obj = mock.Mock(model_info=calls.model_info)
+        calls.model_info.return_value = mock.Mock(author="deepseek-ai", sha="abc123")
+        with mock.patch.object(hf_readme, "HfApi", return_value=api_obj), \
+                mock.patch.object(hf_readme.time, "sleep", calls.sleep), \
+                mock.patch.object(hf_readme, "hf_hub_download", calls.download):
+            calls.download.return_value = str(self.readme)
+            hf_readme.fetch_readme("deepseek-ai/X")
+        self.assertEqual([c[0] for c in calls.mock_calls], ["model_info", "sleep", "download"])
+        calls.sleep.assert_called_once_with(hf_readme.MIN_INTERVAL_SEC)
 
     def test_エラーが返ったら止まり_再試行しない(self):
         err = HfHubHTTPError("429", response=mock.Mock(status_code=429, headers={}))
