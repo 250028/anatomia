@@ -213,7 +213,7 @@ class TableBoundaryTest(unittest.TestCase):
 
     def test_自社の表が1つなら読まなかった表は数えない(self):
         _, skipped, _ = parse_readme(LAYOUT, "https://example.test/card", "tester", "2026-10-28", "abc123")
-        self.assertEqual(skipped["読まなかった表（自社の列あり）"], 0)
+        self.assertNotIn("読まなかった表（自社の列あり）", skipped)
 
     def test_表がないときは止める(self):
         with self.assertRaises(ValueError):

@@ -21,6 +21,7 @@ from huggingface_hub import HfApi, hf_hub_download
 from huggingface_hub.errors import HfHubHTTPError
 
 from scraper.google_modelcard import MIN_INTERVAL_SEC, FetchStopped
+from scraper.values import NO_VALUE, clean_value
 
 # 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
 # 取得元の版（Preview・正式版・V4.1-Flash）は R-3 で決める（R-1 §2）。決まるまで空にしておく
@@ -29,8 +30,6 @@ OFFICIAL_ORG = "deepseek-ai"
 
 PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
-
-_NO_VALUE = {"", "—", "–", "-"}
 
 _VALUE = re.compile(r"-?\d+(?:\.\d+)?%?")
 
@@ -43,11 +42,6 @@ def _split_mode(name):
             return name[: -len(mode) - 1], mode
     return name, None
 
-
-def _clean_value(text):
-    text = re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text).strip()
-    text = text.strip("*")
-    return re.sub(r"[*†‡§]+$", "", text).strip()
 
 _SEPARATOR_CELL = re.compile(r":?-+:?")
 
@@ -108,8 +102,8 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
         if name.startswith(OWN_MODEL_PREFIX):
             model, mode = _split_mode(name)
             for row in body:
-                value = _clean_value(row[i])
-                if value in _NO_VALUE:
+                value = clean_value(row[i])
+                if value in NO_VALUE:
                     skipped["値なし（—・空欄）"] += 1
                     continue
                 if not _VALUE.fullmatch(value):
