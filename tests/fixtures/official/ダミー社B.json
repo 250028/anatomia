@@ -1,0 +1,50 @@
+[
+  {
+    "provider": "ダミー社B",
+    "model": "Model-B1",
+    "benchmark": "Bench-X",
+    "score": 77.7,
+    "unit": "%",
+    "raw_value": "ダミー値 77.7",
+    "source_url": "https://example.com/dummy-b/readme",
+    "retrieved_at": "2026-10-15",
+    "retrieved_by": "ダミー",
+    "retrieval_method": "ダミー",
+    "model_type": null,
+    "mode": null,
+    "condition": null,
+    "sha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  {
+    "provider": "ダミー社B",
+    "model": "Model-B1",
+    "benchmark": "Bench-Z",
+    "score": 0.91,
+    "unit": null,
+    "raw_value": "ダミー値 0.91",
+    "source_url": "https://example.com/dummy-b/readme",
+    "retrieved_at": "2026-10-15",
+    "retrieved_by": "ダミー",
+    "retrieval_method": "ダミー",
+    "model_type": null,
+    "mode": null,
+    "condition": null,
+    "sha": "0123456789abcdef0123456789abcdef01234567"
+  },
+  {
+    "provider": "ダミー社B",
+    "model": "Model-B2",
+    "benchmark": "Bench-Y",
+    "score": 1702,
+    "unit": "Elo",
+    "raw_value": "ダミー値 1702",
+    "source_url": "https://example.com/dummy-b/readme",
+    "retrieved_at": "2026-10-15",
+    "retrieved_by": "ダミー",
+    "retrieval_method": "ダミー",
+    "model_type": null,
+    "mode": "Max",
+    "condition": null,
+    "sha": "0123456789abcdef0123456789abcdef01234567"
+  }
+]
