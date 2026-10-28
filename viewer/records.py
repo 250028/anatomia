@@ -8,6 +8,7 @@
 
 import json
 import math
+import re
 from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
@@ -34,7 +35,7 @@ class ScoreRecord:
     source_url: str
     retrieved_at: str  # YYYY-MM-DD
     retrieved_by: str
-    retrieval_method: str
+    retrieval_method: str  # 値の検査は #33 の決定待ち(下の `_METHOD_LABELS` のコメントも参照)
     mode: str | None = None
     model_type: str | None = None
     benchmark_version: str | None = None
@@ -47,6 +48,21 @@ class ScoreRecord:
 # 取得方法の表示名。#33 は `script`/`manual`、#28 は「手入力」と書き、表記が未確定。
 # 知らない値(ダミーの「ダミー」など)は、そのまま出す
 _METHOD_LABELS = {"script": "スクリプト", "manual": "手入力"}
+
+
+def record_key(record):
+    """同じ値を指す組(モデル＋種類＋推論モード＋ベンチマーク＋版＋測定条件)。
+    この組が同じレコードが 2 件あるのは誤りなので、`load_official` が止める。
+    測定条件だけが違う値は別の組で、表では同じセルに並ぶ。"""
+    return (
+        record.provider,
+        record.model,
+        record.model_type,
+        record.mode,
+        record.benchmark,
+        record.benchmark_version,
+        record.condition,
+    )
 
 
 def retrieval_method_label(method):
@@ -80,8 +96,9 @@ def record_from_dict(raw, file_provider=None):
       どちらか片方だけでもよい。両方あって食い違うときは、どちらが正か分からないので誤りにする
     - `unit`: キーが無い・null・空文字は「単位なし」(None)
     - `raw_value`・`as_of`: 意味の表に行が無い。必須か分からないので、無くても読む
-    - `retrieval_method`: `script`/`manual` に限らず、空でない文字列なら受け付ける
-    出典(`source_url`・`retrieved_at`・`retrieved_by`)は、#33 でも必須で、禁則 5 の根拠なので、必ず検査する。
+    - `retrieval_method`: `script`/`manual` に限らず、空でない文字列なら受け付ける(値の検査は #33 の決定待ち)
+    出典(`source_url`・`retrieved_at`・`retrieved_by`)は、#33 でも必須で、禁則 5 の根拠なので、必ず検査する
+    (`source_url` は http(s) の URL、`retrieved_at` は厳密に YYYY-MM-DD)。`score` は nan・inf・大きすぎる整数も誤り。
     """
     if not isinstance(raw, dict):
         raise ValueError("オブジェクトでない")
@@ -95,14 +112,28 @@ def record_from_dict(raw, file_provider=None):
         raise ValueError("`provider` がレコードにもファイル名にも無い")
 
     score = raw.get("score")
-    if isinstance(score, bool) or not isinstance(score, (int, float)) or not math.isfinite(score):
+    if isinstance(score, bool) or not isinstance(score, (int, float)):
         raise ValueError("必須の `score` が数値でない")
+    try:
+        finite = math.isfinite(score)  # 桁数の大きい整数は OverflowError になる
+    except (OverflowError, ValueError):
+        finite = False
+    if not finite:
+        raise ValueError("必須の `score` が有限の数値でない(nan・inf・大きすぎる整数)")
 
     retrieved_at = _required_str(raw, "retrieved_at")
+    # date.fromisoformat は 3.11 以降 `20261020` や `2026-W43-2` も通すので、形も確かめる
+    # (`\d` は全角数字にも合うので `[0-9]` を使う)
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", retrieved_at):
+        raise ValueError(f"`retrieved_at` が YYYY-MM-DD の日付でない: {retrieved_at}")
     try:
         date.fromisoformat(retrieved_at)
     except ValueError:
         raise ValueError(f"`retrieved_at` が YYYY-MM-DD の日付でない: {retrieved_at}") from None
+
+    source_url = _required_str(raw, "source_url")
+    if not re.match(r"https?://", source_url, re.IGNORECASE):
+        raise ValueError(f"`source_url` が http:// か https:// で始まらない: {source_url}")
 
     return ScoreRecord(
         provider=provider,
@@ -110,7 +141,7 @@ def record_from_dict(raw, file_provider=None):
         benchmark=_required_str(raw, "benchmark"),
         score=score,
         unit=_optional_str(raw, "unit"),
-        source_url=_required_str(raw, "source_url"),
+        source_url=source_url,
         retrieved_at=retrieved_at,
         retrieved_by=_required_str(raw, "retrieved_by"),
         retrieval_method=_required_str(raw, "retrieval_method"),
@@ -138,13 +169,21 @@ def load_official(directory):
     """`directory/*.json`(会社ごとのファイル)をすべて読み、1 つのリストにして返す。
 
     - ファイル名(拡張子を除く)は、レコードの `provider` が無いときの代わりに使う
-    - ディレクトリが無い・JSON が 1 つも無いときは空のリスト(「正式データがまだない」の判定は呼び出し側)
+    - ディレクトリが存在しない(または、ディレクトリでない)ときは `FileNotFoundError`・`NotADirectoryError`
+      (どちらも `OSError`)。パスの誤りを「データなし」に見せないため。存在して JSON が 1 つも無いときだけ空のリスト
+      (「正式データがまだない」の判定は呼び出し側)
     - 読めないレコードが 1 件でもあれば、全部のファイルを見終えてから `RecordError` で止める
       (`problems` に全件の理由が入る)。読めたものだけを返すことはしない
+    - `record_key` が同じレコードが重なっているときも `RecordError`(どちらの値が正か分からないため)
     """
     directory = Path(directory)
+    if not directory.exists():
+        raise FileNotFoundError(f"正式データのディレクトリが無い: {directory}")
+    if not directory.is_dir():
+        raise NotADirectoryError(f"正式データのパスがディレクトリでない: {directory}")
     records = []
     problems = []
+    first_seen = {}  # record_key → "ファイル名 の N 件目"
     for path in sorted(directory.glob("*.json")):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -153,10 +192,21 @@ def load_official(directory):
             problems.append(f"{path.name}: 読み込めない: {e}")
             continue
         for i, raw in enumerate(items):
+            where = f"{path.name} の {i + 1} 件目"
             try:
-                records.append(record_from_dict(raw, file_provider=path.stem))
+                record = record_from_dict(raw, file_provider=path.stem)
             except ValueError as e:
-                problems.append(f"{path.name} の {i + 1} 件目: {e}")
+                problems.append(f"{where}: {e}")
+                continue
+            key = record_key(record)
+            if key in first_seen:
+                problems.append(
+                    f"{where}: {first_seen[key]} と、モデル・種類・推論モード・ベンチマーク・版・測定条件が"
+                    f"すべて同じ({record.model} / {record.benchmark})。重複か矛盾"
+                )
+                continue
+            first_seen[key] = where
+            records.append(record)
     if problems:
         raise RecordError(problems)
     return records
