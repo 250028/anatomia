@@ -1,7 +1,6 @@
 from scraper import hf_readme
 from scraper.google_modelcard import FetchStopped
 from scraper.hf_readme import parse_readme
-from huggingface_hub.errors import HfHubHTTPError
 from pathlib import Path
 from unittest import mock
 import json
@@ -227,74 +226,78 @@ class TableBoundaryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+SHA = "a" * 40
+README_URL = f"https://huggingface.co/deepseek-ai/X/resolve/{SHA}/README.md"
+
+
+def api_response(status=200, sha=SHA):
+    return mock.Mock(status_code=status, json=mock.Mock(return_value={"sha": sha}))
+
+
+def readme_response(status=200):
+    return mock.Mock(status_code=status, content=LAYOUT.encode("utf-8"))
 
 
 class FetchReadmeTest(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.readme = Path(self.tmp.name) / "README.md"
-        self.readme.write_text(LAYOUT, encoding="utf-8")
         patcher = mock.patch.object(hf_readme.time, "sleep")
         patcher.start()
         self.addCleanup(patcher.stop)
 
-    def patches(self, author="deepseek-ai"):
-        info = mock.Mock(author=author, sha="abc123")
-        api = mock.patch.object(hf_readme, "HfApi", return_value=mock.Mock(model_info=mock.Mock(return_value=info)))
-        dl = mock.patch.object(hf_readme, "hf_hub_download", return_value=str(self.readme))
-        return api, dl
+    def patch_get(self, *responses):
+        return mock.patch.object(hf_readme.requests, "get", side_effect=list(responses))
 
     def test_本文と_sha_を返す(self):
-        api, dl = self.patches()
-        with api, dl:
-            self.assertEqual(hf_readme.fetch_readme("deepseek-ai/X"), (LAYOUT, "abc123"))
+        with self.patch_get(api_response(), readme_response()):
+            self.assertEqual(hf_readme.fetch_readme("deepseek-ai/X"), (LAYOUT, SHA))
 
-    def test_版を固定し_保存先はリポジトリの外(self):
-        api, dl = self.patches()
-        with api, dl as download:
+    def test_版を固定した_URL_で_README_を取る(self):
+        with self.patch_get(api_response(), readme_response()) as get:
             hf_readme.fetch_readme("deepseek-ai/X")
-        kw = download.call_args.kwargs
-        self.assertEqual(kw["revision"], "abc123")
-        for d in (kw["local_dir"], kw["cache_dir"]):
-            self.assertFalse(Path(d).resolve().is_relative_to(REPO_ROOT))
+        self.assertEqual(get.call_args_list[0].args[0], "https://huggingface.co/api/models/deepseek-ai/X")
+        self.assertEqual(get.call_args_list[1].args[0], README_URL)
 
-    def test_個人の_token_を付けない(self):
-        info = mock.Mock(author="deepseek-ai", sha="abc123")
-        model_info = mock.Mock(return_value=info)
-        with mock.patch.object(hf_readme, "HfApi", return_value=mock.Mock(model_info=model_info)), \
-                mock.patch.object(hf_readme, "hf_hub_download", return_value=str(self.readme)) as download:
+    def test_個人の_token_を付けず_リダイレクトも追わない(self):
+        with self.patch_get(api_response(), readme_response()) as get:
             hf_readme.fetch_readme("deepseek-ai/X")
-        self.assertIs(model_info.call_args.kwargs["token"], False)
-        self.assertIs(download.call_args.kwargs["token"], False)
+        for call in get.call_args_list:
+            self.assertNotIn("Authorization", call.kwargs["headers"])
+            self.assertIs(call.kwargs["allow_redirects"], False)
 
     def test_公式組織以外のリポジトリは止める(self):
-        api, dl = self.patches(author="someone")
-        with api, dl as download:
+        with self.patch_get() as get:
             with self.assertRaises(FetchStopped):
                 hf_readme.fetch_readme("someone/X")
-        download.assert_not_called()
+        get.assert_not_called()
 
     def test_API_と_README_の取得の間にも間隔を空ける(self):
         calls = mock.Mock()
-        api_obj = mock.Mock(model_info=calls.model_info)
-        calls.model_info.return_value = mock.Mock(author="deepseek-ai", sha="abc123")
-        with mock.patch.object(hf_readme, "HfApi", return_value=api_obj), \
-                mock.patch.object(hf_readme.time, "sleep", calls.sleep), \
-                mock.patch.object(hf_readme, "hf_hub_download", calls.download):
-            calls.download.return_value = str(self.readme)
+        calls.get.side_effect = [api_response(), readme_response()]
+        with mock.patch.object(hf_readme.requests, "get", calls.get), mock.patch.object(hf_readme.time, "sleep", calls.sleep):
             hf_readme.fetch_readme("deepseek-ai/X")
-        self.assertEqual([c[0] for c in calls.mock_calls], ["model_info", "sleep", "download"])
+        self.assertEqual([c[0] for c in calls.mock_calls], ["get", "sleep", "get"])
         calls.sleep.assert_called_once_with(hf_readme.MIN_INTERVAL_SEC)
 
-    def test_エラーが返ったら止まり_再試行しない(self):
-        err = HfHubHTTPError("429", response=mock.Mock(status_code=429, headers={}))
-        api, dl = self.patches()
-        with api, mock.patch.object(hf_readme, "hf_hub_download", side_effect=err) as download:
-            with self.assertRaises(FetchStopped):
-                hf_readme.fetch_readme("deepseek-ai/X")
-        self.assertEqual(download.call_count, 1)
+    def test_200_以外が返ったら止まり_再試行しない(self):
+        for status in (403, 429, 500, 307):
+            with self.subTest(status=status, 取得先="モデル情報"):
+                with self.patch_get(api_response(status=status)) as get:
+                    with self.assertRaises(FetchStopped):
+                        hf_readme.fetch_readme("deepseek-ai/X")
+                self.assertEqual(get.call_count, 1)
+            with self.subTest(status=status, 取得先="README"):
+                with self.patch_get(api_response(), readme_response(status=status)) as get:
+                    with self.assertRaises(FetchStopped):
+                        hf_readme.fetch_readme("deepseek-ai/X")
+                self.assertEqual(get.call_count, 2)
+
+    def test_版が読めないときは止め_README_は取らない(self):
+        for sha in ("main", None, "A" * 40):
+            with self.subTest(sha=sha):
+                with self.patch_get(api_response(sha=sha)) as get:
+                    with self.assertRaises(FetchStopped):
+                        hf_readme.fetch_readme("deepseek-ai/X")
+                self.assertEqual(get.call_count, 1)
 
 
 class MainTest(unittest.TestCase):

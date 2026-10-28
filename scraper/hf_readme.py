@@ -1,7 +1,9 @@
 """Hugging Face の公式組織の README.md（Markdown の表）から、自社モデルのスコアを取り出す。
 
-README は huggingface_hub の hf_hub_download で生ファイルとして取る（R-2 §5）。ページを描画した
-HTML には、マージされていない PR の第三者の値が混ざるため使わない（R-1 §4-1）。
+README は、版（sha）を固定した resolve の URL から生ファイルとして取る（R-2 §5 の hf_hub_download と同じファイル）。
+ページを描画した HTML には、マージされていない PR の第三者の値が混ざるため使わない（R-1 §4-1）。
+huggingface_hub は使わない：hf_hub_download は 429 でも内部で再試行し、企画書 §6-3 の「429 が返ったら止める」と
+合わないため。requests で 1 回ずつ取り、200 以外が返ったら止める（Google 側と同じ）。
 メンバーが手動で実行する（企画書 §6-1）。取得結果は候補データで、正式データへは
 実行者以外のメンバーが出典ページと照合してから反映する（企画書 §3-2 ③）。
 
@@ -12,21 +14,21 @@ import argparse
 import json
 import re
 import sys
-import tempfile
 import time
 from collections import Counter
 from datetime import date
 
-from huggingface_hub import HfApi, hf_hub_download
-from huggingface_hub.errors import HfHubHTTPError
+import requests
 
-from scraper.google_modelcard import MIN_INTERVAL_SEC, FetchStopped
+from scraper.google_modelcard import MIN_INTERVAL_SEC, USER_AGENT, FetchStopped
 from scraper.values import NO_VALUE, clean_value
 
 # 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
 # 取得元の版（Preview・正式版・V4.1-Flash）は R-3 で決める（R-1 §2）。決まるまで空にしておく
 REPO_IDS = []
 OFFICIAL_ORG = "deepseek-ai"
+API_URL = "https://huggingface.co/api/models/{repo_id}"
+README_URL = "https://huggingface.co/{repo_id}/resolve/{sha}/README.md"
 
 PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
@@ -129,26 +131,29 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     return records, skipped, unreadable
 
 
-def fetch_readme(repo_id):
-    """README.md の本文と、取得した版（sha）を返す。このコードは再試行せず、エラーが返ったら止める（回避しない）。
+_SHA = re.compile(r"[0-9a-f]{40}")
 
-    ただし hf_hub_download は、429・5xx・タイムアウトのとき内部で最大 5 回まで再試行する
-    （huggingface_hub 2.3.0 のソースで確認。0.28 など下限の版は未確認）。実際の取得の前に、メンバーが使う版で確かめる。
-    """
-    # 保存先は一時ディレクトリ。README の本文をリポジトリに残さない（企画書 §3-2 ①・§6-3）
-    with tempfile.TemporaryDirectory() as tmp:
-        try:
-            # token=False：環境に保存されたメンバー個人の token を付けない（公開の README を匿名で取る）
-            info = HfApi().model_info(repo_id, token=False)
-            if info.author != OFFICIAL_ORG:
-                raise FetchStopped(f"{repo_id} の作者が {OFFICIAL_ORG} ではない({info.author})。取得を止める")
-            # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
-            time.sleep(MIN_INTERVAL_SEC)
-            path = hf_hub_download(repo_id, "README.md", revision=info.sha, cache_dir=tmp, local_dir=tmp, token=False)
-        except HfHubHTTPError as e:
-            raise FetchStopped(f"{repo_id} の取得でエラーが返った({e})。取得を止める") from e
-        with open(path, encoding="utf-8") as f:
-            return f.read(), info.sha
+
+def _get(url):
+    # 再試行はしない。403・429 などが返ったら止める（回避しない）。token は付けない（メンバー個人の token を使わない）。
+    # リダイレクトは追わない：移動先は R-2 の判定を受けていないサイトかもしれず、事後の確認では触れること自体を防げない
+    res = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30, allow_redirects=False)
+    if res.status_code != 200:
+        raise FetchStopped(f"{url} が {res.status_code} を返した。取得を止める")
+    return res
+
+
+def fetch_readme(repo_id):
+    """README.md の本文と、取得した版（sha）を返す。モデル情報と README を 1 回ずつ取り、200 以外なら止める。"""
+    if repo_id.split("/")[0] != OFFICIAL_ORG:
+        raise FetchStopped(f"{repo_id} は {OFFICIAL_ORG} のリポジトリではない。取得を止める")
+    sha = _get(API_URL.format(repo_id=repo_id)).json().get("sha")
+    if not isinstance(sha, str) or not _SHA.fullmatch(sha):
+        raise FetchStopped(f"{repo_id} の版(sha)が読めない({sha!r})。取得を止める")
+    # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
+    time.sleep(MIN_INTERVAL_SEC)
+    # 本文はメモリ上だけで持ち、ファイルに残さない（企画書 §3-2 ①・§6-3）
+    return _get(README_URL.format(repo_id=repo_id, sha=sha)).content.decode("utf-8"), sha
 
 
 def main():
