@@ -291,6 +291,16 @@ class FetchReadmeTest(unittest.TestCase):
                         hf_readme.fetch_readme("deepseek-ai/X")
                 self.assertEqual(get.call_count, 2)
 
+    def test_200_でも_JSON_のオブジェクトでなければ止める(self):
+        # ボット判定の画面(HTML)や配列が返ったとき、トレースバックではなく FetchStopped で止める
+        for name, bad in (("JSONでない", mock.Mock(status_code=200, json=mock.Mock(side_effect=ValueError))),
+                          ("配列", mock.Mock(status_code=200, json=mock.Mock(return_value=[])))):
+            with self.subTest(応答=name):
+                with self.patch_get(bad) as get:
+                    with self.assertRaises(FetchStopped):
+                        hf_readme.fetch_readme("deepseek-ai/X")
+                self.assertEqual(get.call_count, 1)
+
     def test_版が読めないときは止め_README_は取らない(self):
         for sha in ("main", None, "A" * 40):
             with self.subTest(sha=sha):

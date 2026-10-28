@@ -147,7 +147,12 @@ def fetch_readme(repo_id):
     """README.md の本文と、取得した版（sha）を返す。モデル情報と README を 1 回ずつ取り、200 以外なら止める。"""
     if repo_id.split("/")[0] != OFFICIAL_ORG:
         raise FetchStopped(f"{repo_id} は {OFFICIAL_ORG} のリポジトリではない。取得を止める")
-    sha = _get(API_URL.format(repo_id=repo_id)).json().get("sha")
+    api_url = API_URL.format(repo_id=repo_id)
+    try:
+        sha = _get(api_url).json().get("sha")
+    except (ValueError, AttributeError) as e:
+        # 200 でも JSON のオブジェクトでないなら、ボット判定の画面などかもしれない。回避せず止める
+        raise FetchStopped(f"{api_url} が JSON のオブジェクトではない。取得を止める") from e
     if not isinstance(sha, str) or not _SHA.fullmatch(sha):
         raise FetchStopped(f"{repo_id} の版(sha)が読めない({sha!r})。取得を止める")
     # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
