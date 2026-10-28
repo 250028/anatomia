@@ -260,6 +260,15 @@ class FetchReadmeTest(unittest.TestCase):
         for d in (kw["local_dir"], kw["cache_dir"]):
             self.assertFalse(Path(d).resolve().is_relative_to(REPO_ROOT))
 
+    def test_個人の_token_を付けない(self):
+        info = mock.Mock(author="deepseek-ai", sha="abc123")
+        model_info = mock.Mock(return_value=info)
+        with mock.patch.object(hf_readme, "HfApi", return_value=mock.Mock(model_info=model_info)), \
+                mock.patch.object(hf_readme, "hf_hub_download", return_value=str(self.readme)) as download:
+            hf_readme.fetch_readme("deepseek-ai/X")
+        self.assertIs(model_info.call_args.kwargs["token"], False)
+        self.assertIs(download.call_args.kwargs["token"], False)
+
     def test_公式組織以外のリポジトリは止める(self):
         api, dl = self.patches(author="someone")
         with api, dl as download:

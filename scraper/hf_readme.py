@@ -136,16 +136,21 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
 
 
 def fetch_readme(repo_id):
-    """README.md の本文と、取得した版（sha）を返す。再試行はしない。エラーが返ったら止める（回避しない）。"""
+    """README.md の本文と、取得した版（sha）を返す。このコードは再試行せず、エラーが返ったら止める（回避しない）。
+
+    ただし hf_hub_download は、429・5xx・タイムアウトのとき内部で最大 5 回まで再試行する
+    （huggingface_hub 2.3.0 のソースで確認。0.28 など下限の版は未確認）。実際の取得の前に、メンバーが使う版で確かめる。
+    """
     # 保存先は一時ディレクトリ。README の本文をリポジトリに残さない（企画書 §3-2 ①・§6-3）
     with tempfile.TemporaryDirectory() as tmp:
         try:
-            info = HfApi().model_info(repo_id)
+            # token=False：環境に保存されたメンバー個人の token を付けない（公開の README を匿名で取る）
+            info = HfApi().model_info(repo_id, token=False)
             if info.author != OFFICIAL_ORG:
                 raise FetchStopped(f"{repo_id} の作者が {OFFICIAL_ORG} ではない({info.author})。取得を止める")
             # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
             time.sleep(MIN_INTERVAL_SEC)
-            path = hf_hub_download(repo_id, "README.md", revision=info.sha, cache_dir=tmp, local_dir=tmp)
+            path = hf_hub_download(repo_id, "README.md", revision=info.sha, cache_dir=tmp, local_dir=tmp, token=False)
         except HfHubHTTPError as e:
             raise FetchStopped(f"{repo_id} の取得でエラーが返った({e})。取得を止める") from e
         with open(path, encoding="utf-8") as f:
