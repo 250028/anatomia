@@ -11,10 +11,11 @@ from viewer.grid import (
     filter_by_company,
     format_score,
     last_retrieved_by_company,
-    load_official,
     table_header,
     table_rows,
 )
+
+from viewer.records import load_official
 
 # ダミー社A・Bの合成データ(実在しない会社・モデル。出典は example.com)
 FIXTURES = Path(__file__).parent / "fixtures" / "official"
@@ -88,6 +89,36 @@ class GridTest(unittest.TestCase):
         self.assertEqual(rows, sorted(rows))
         self.assertEqual(build_grid(list(reversed(self.records))).rows, self.grid.rows)
 
+    def test_セルの中の値の並びは入力の順に依らず測定条件の文字列順(self):
+        g = self.grid
+        row, col = find_row(g, "Model-A1", "Reasoning", "High"), find_col(g, "Bench-W")
+        expected = g.cell(row, col).text
+        self.assertEqual(expected, "55.1% / 63.4%" + CONDITION_MARK)
+        for records in (list(reversed(self.records)), sorted(self.records, key=lambda r: -r.score)):
+            other = build_grid(records)
+            self.assertEqual(other.cell(find_row(other, "Model-A1", "Reasoning", "High"), find_col(other, "Bench-W")).text, expected)
+
+    def test_条件なしの値が先_条件ありは条件の文字列順(self):
+        base = self.records[0]
+        records = [replace(base, condition=c, score=s) for c, s in (("b", 3.0), (None, 9.0), ("a", 1.0))]
+        for rs in (records, list(reversed(records))):
+            self.assertEqual([r.condition for r in build_grid(rs).cell(0, 0).records], [None, "a", "b"])
+
+    def test_位置でなく行と列の値でセルを引ける(self):
+        g = self.grid
+        row, col = find_row(g, "Model-A1", "Reasoning", "High"), find_col(g, "Bench-X")
+        self.assertIs(g.cell_at(g.rows[row], g.columns[col]), g.cell(row, col))
+        self.assertEqual(g.cell_at(g.rows[row], g.columns[col]).text, "81.5%")
+
+    def test_絞り込みで消えた行や列を_cell_at_で引くと_KeyError(self):
+        only_b = build_grid(filter_by_company(self.records, ["ダミー社B"]))
+        gone_row = self.grid.rows[find_row(self.grid, "Model-A2")]
+        gone_col = self.grid.columns[find_col(self.grid, "Bench-V", "2.1")]
+        with self.assertRaises(KeyError):
+            only_b.cell_at(gone_row, only_b.columns[0])
+        with self.assertRaises(KeyError):
+            only_b.cell_at(only_b.rows[0], gone_col)
+
     def test_合計_平均_順位の列が無い(self):
         header = table_header(self.grid)
         self.assertEqual(header[:4], ["提供企業", "モデル", "種類", "推論モード"])
@@ -125,6 +156,17 @@ class CompanyTest(unittest.TestCase):
     def test_絞り込みなしは全件_空の選択は0件(self):
         self.assertEqual(len(filter_by_company(self.records, None)), len(self.records))
         self.assertEqual(filter_by_company(self.records, []), [])
+
+    def test_企業名の文字列を_1_つ渡すと_TypeError(self):
+        for bad in ("ダミー社A", b"x"):
+            with self.subTest(bad=bad):
+                with self.assertRaises(TypeError):
+                    filter_by_company(self.records, bad)
+
+    def test_集合やタプルでも絞り込める(self):
+        for selected in ({"ダミー社A"}, ("ダミー社A",), iter(["ダミー社A"])):
+            with self.subTest(selected=type(selected).__name__):
+                self.assertEqual({r.provider for r in filter_by_company(self.records, selected)}, {"ダミー社A"})
 
     def test_絞り込むと他社だけにあるベンチマークの列は消える(self):
         only_b = build_grid(filter_by_company(self.records, ["ダミー社B"]))
@@ -184,6 +226,11 @@ class LastRetrievedTest(unittest.TestCase):
         records = load_official(FIXTURES)
         newer = replace(records[0], retrieved_at="2026-10-28")
         self.assertEqual(last_retrieved_by_company(records + [newer])["ダミー社A"], "2026-10-28")
+
+    def test_新しい日付のレコードが先頭にあっても新しい日付が残る(self):
+        records = load_official(FIXTURES)
+        newer = replace(records[0], retrieved_at="2026-10-28")
+        self.assertEqual(last_retrieved_by_company([newer] + records)["ダミー社A"], "2026-10-28")
 
     def test_絞り込んだ企業だけを数えれば他社は出ない(self):
         only_a = filter_by_company(load_official(FIXTURES), ["ダミー社A"])

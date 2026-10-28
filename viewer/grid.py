@@ -5,20 +5,34 @@
 - 領域の列・強中弱・総合スコア・平均・順位は作らない。行の並びもスコアでは並べ替えない
 - ロジック層なので `streamlit`・`requests`・`pandas` は import しない(tests/test_viewer_records.py で確かめる)
 
-app.py からの使い方:
+app.py からの使い方(`load_official` は `viewer.records` から import する。ここでは再公開しない):
 
+    from viewer.records import load_official
     records = load_official("data/official")      # RecordError なら .problems を画面に出す
-    shown = filter_by_company(records, selected)  # selected=None で絞り込まない
+    shown = filter_by_company(records, selected)  # selected=None で絞り込まない。企業名の集まり(文字列 1 つは TypeError)
     grid = build_grid(shown)
     header, rows = table_header(grid), table_rows(grid)   # DataFrame(rows, columns=header) などへ
-    items = detail_items(grid.cell(row_index, column_index))   # 選んだセルの詳細
+    # 選んだセルの詳細。位置の番号ではなく、行・列の値で引く(下の注を参照)
+    items = detail_items(grid.cell_at(row, column))       # row は grid.rows の要素、column は grid.columns の要素
     last = last_retrieved_by_company(records)     # {会社: 最終取得日}
+
+注:
+- セルは `grid.cell_at(row, column)` で引くことを勧める。`grid.cell(row_index, column_index)` は位置の番号なので、
+  `st.session_state` に番号を残すと、企業の絞り込みを変えた瞬間に別のセルを指す(範囲外なら IndexError)。
+  `ModelRow`・`BenchmarkColumn` は frozen でハッシュできるので、`session_state` や `selectbox` の選択肢にはそちらを使う
+
+Streamlit でのキャッシュの案(Streamlit の API・挙動は実機で確かめていない。すべて【未確認】):
+- キャッシュするのは `load_official` の戻り値(`list[ScoreRecord]`、frozen の dataclass)だけ。
+  鍵は「ディレクトリのパス」と「`*.json` の更新時刻」にする(更新時刻を引数に入れて、ファイルを直したら読み直す)
+- `Grid` は毎回 `build_grid` で作り直す。数百件なら安く、`Grid` は内部に dict を持つのでハッシュできない
+  (`hash(grid)` は TypeError)。`Grid` を引数に取る関数をキャッシュ対象にしない
+- `RecordError` は例外なのでキャッシュされず、データを直すたびに読み直される(これも【未確認】)
 """
 
 from dataclasses import dataclass
 from datetime import date
 
-from viewer.records import ScoreRecord, load_official, retrieval_method_label  # noqa: F401 (load_official は app.py 向けの再公開)
+from viewer.records import ScoreRecord, retrieval_method_label
 
 NOT_PUBLISHED = "未公表"
 # 測定条件が付いた値の印。条件の中身は詳細(detail_items)で見せる
@@ -50,6 +64,8 @@ class BenchmarkColumn:
 
     @property
     def label(self):
+        # 版を名前に含める書き方(`Bench A 2.1`)と別の項目にする書き方(`benchmark_version`)は、#33 の決定待ち。
+        # 混在すると別の列に同じ見出しができ得るが、決まるまでは直さない(決まれば実質消える)
         return f"{self.benchmark} {self.benchmark_version}" if self.benchmark_version else self.benchmark
 
 
@@ -78,7 +94,13 @@ class Grid:
     _cells: dict
 
     def cell(self, row_index, column_index):
+        """位置の番号で引く。表の描画の中で使う。画面の状態(選択したセル)には使わず、`cell_at` を使う。"""
         return self._cells[(self.rows[row_index], self.columns[column_index])]
+
+    def cell_at(self, row, column):
+        """行(`ModelRow`)と列(`BenchmarkColumn`)の値で引く。app.py はこちらを勧める。
+        この Grid に無い行・列なら KeyError(絞り込みで消えた行・列を、別のセルと取り違えない)。"""
+        return self._cells[(row, column)]
 
 
 def format_score(record):
@@ -96,9 +118,13 @@ def companies(records):
 
 
 def filter_by_company(records, selected):
-    """`selected`(企業名の集まり)に含まれる企業のレコードだけ返す。None なら絞り込まない。"""
+    """`selected`(企業名の集まり)に含まれる企業のレコードだけ返す。None なら絞り込まない。
+    文字列 1 つを渡すと、文字の集まりとして扱われて 0 件になるので TypeError にする
+    (`st.selectbox` は文字列、`st.multiselect` はリストを返す。取り違えを黙って通さない)。"""
     if selected is None:
         return list(records)
+    if isinstance(selected, (str, bytes)):
+        raise TypeError("`selected` は企業名の集まり(リスト・集合など)で、文字列 1 つではない")
     selected = set(selected)
     return [r for r in records if r.provider in selected]
 
@@ -119,7 +145,13 @@ def build_grid(records):
     for r in records:
         key = (ModelRow(r.provider, r.model, r.model_type, r.mode), BenchmarkColumn(r.benchmark, r.benchmark_version))
         found.setdefault(key, []).append(r)
-    cells = {(row, col): Cell(tuple(found.get((row, col), ()))) for row in rows for col in columns}
+    # セルの中の並びは、測定条件の文字列順(条件なしが先)。入力の順に依らず、スコアでは並べない。
+    # 同じ測定条件のレコードの重複は load_official が止めるが、build_grid に直接渡されたときのため、
+    # 同じ条件の中だけスコアを最後のキーにして並びを決める(順位の意味は持たせない)
+    def in_cell(key):
+        return Cell(tuple(sorted(found.get(key, ()), key=lambda r: (r.condition or "", r.score))))
+
+    cells = {(row, col): in_cell((row, col)) for row in rows for col in columns}
     return Grid(tuple(rows), tuple(columns), cells)
 
 
