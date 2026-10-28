@@ -227,42 +227,33 @@ class TableBoundaryTest(unittest.TestCase):
             parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
 
 SHA = "a" * 40
-README_URL = f"https://huggingface.co/deepseek-ai/X/resolve/{SHA}/README.md"
+README_URL = "https://huggingface.co/deepseek-ai/X/resolve/main/README.md"
 
 
-def api_response(status=200, sha=SHA):
-    return mock.Mock(status_code=status, json=mock.Mock(return_value={"sha": sha}))
-
-
-def readme_response(status=200):
-    return mock.Mock(status_code=status, content=LAYOUT.encode("utf-8"))
+def readme_response(status=200, sha=SHA):
+    headers = {} if sha is None else {"X-Repo-Commit": sha}
+    return mock.Mock(status_code=status, headers=headers, content=LAYOUT.encode("utf-8"))
 
 
 class FetchReadmeTest(unittest.TestCase):
-    def setUp(self):
-        patcher = mock.patch.object(hf_readme.time, "sleep")
-        patcher.start()
-        self.addCleanup(patcher.stop)
-
     def patch_get(self, *responses):
         return mock.patch.object(hf_readme.requests, "get", side_effect=list(responses))
 
     def test_本文と_sha_を返す(self):
-        with self.patch_get(api_response(), readme_response()):
+        with self.patch_get(readme_response()):
             self.assertEqual(hf_readme.fetch_readme("deepseek-ai/X"), (LAYOUT, SHA))
 
-    def test_版を固定した_URL_で_README_を取る(self):
-        with self.patch_get(api_response(), readme_response()) as get:
+    def test_README_を_1_回だけ取る(self):
+        with self.patch_get(readme_response()) as get:
             hf_readme.fetch_readme("deepseek-ai/X")
-        self.assertEqual(get.call_args_list[0].args[0], "https://huggingface.co/api/models/deepseek-ai/X")
-        self.assertEqual(get.call_args_list[1].args[0], README_URL)
+        self.assertEqual(get.call_count, 1)
+        self.assertEqual(get.call_args.args[0], README_URL)
 
     def test_個人の_token_を付けず_リダイレクトも追わない(self):
-        with self.patch_get(api_response(), readme_response()) as get:
+        with self.patch_get(readme_response()) as get:
             hf_readme.fetch_readme("deepseek-ai/X")
-        for call in get.call_args_list:
-            self.assertNotIn("Authorization", call.kwargs["headers"])
-            self.assertIs(call.kwargs["allow_redirects"], False)
+        self.assertNotIn("Authorization", get.call_args.kwargs["headers"])
+        self.assertIs(get.call_args.kwargs["allow_redirects"], False)
 
     def test_公式組織以外のリポジトリは止める(self):
         with self.patch_get() as get:
@@ -270,41 +261,18 @@ class FetchReadmeTest(unittest.TestCase):
                 hf_readme.fetch_readme("someone/X")
         get.assert_not_called()
 
-    def test_API_と_README_の取得の間にも間隔を空ける(self):
-        calls = mock.Mock()
-        calls.get.side_effect = [api_response(), readme_response()]
-        with mock.patch.object(hf_readme.requests, "get", calls.get), mock.patch.object(hf_readme.time, "sleep", calls.sleep):
-            hf_readme.fetch_readme("deepseek-ai/X")
-        self.assertEqual([c[0] for c in calls.mock_calls], ["get", "sleep", "get"])
-        calls.sleep.assert_called_once_with(hf_readme.MIN_INTERVAL_SEC)
-
     def test_200_以外が返ったら止まり_再試行しない(self):
         for status in (403, 429, 500, 307):
-            with self.subTest(status=status, 取得先="モデル情報"):
-                with self.patch_get(api_response(status=status)) as get:
-                    with self.assertRaises(FetchStopped):
-                        hf_readme.fetch_readme("deepseek-ai/X")
-                self.assertEqual(get.call_count, 1)
-            with self.subTest(status=status, 取得先="README"):
-                with self.patch_get(api_response(), readme_response(status=status)) as get:
-                    with self.assertRaises(FetchStopped):
-                        hf_readme.fetch_readme("deepseek-ai/X")
-                self.assertEqual(get.call_count, 2)
-
-    def test_200_でも_JSON_のオブジェクトでなければ止める(self):
-        # ボット判定の画面(HTML)や配列が返ったとき、トレースバックではなく FetchStopped で止める
-        for name, bad in (("JSONでない", mock.Mock(status_code=200, json=mock.Mock(side_effect=ValueError))),
-                          ("配列", mock.Mock(status_code=200, json=mock.Mock(return_value=[])))):
-            with self.subTest(応答=name):
-                with self.patch_get(bad) as get:
+            with self.subTest(status=status):
+                with self.patch_get(readme_response(status=status)) as get:
                     with self.assertRaises(FetchStopped):
                         hf_readme.fetch_readme("deepseek-ai/X")
                 self.assertEqual(get.call_count, 1)
 
-    def test_版が読めないときは止め_README_は取らない(self):
-        for sha in ("main", None, "A" * 40):
+    def test_版のヘッダーが無いか読めないときは止める(self):
+        for sha in (None, "main", "A" * 40, "a" * 39):
             with self.subTest(sha=sha):
-                with self.patch_get(api_response(sha=sha)) as get:
+                with self.patch_get(readme_response(sha=sha)) as get:
                     with self.assertRaises(FetchStopped):
                         hf_readme.fetch_readme("deepseek-ai/X")
                 self.assertEqual(get.call_count, 1)

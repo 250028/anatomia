@@ -1,9 +1,10 @@
 """Hugging Face の公式組織の README.md（Markdown の表）から、自社モデルのスコアを取り出す。
 
-README は、版（sha）を固定した resolve の URL から生ファイルとして取る（R-2 §5 の hf_hub_download と同じファイル）。
+README は、resolve の URL から生ファイルとして 1 回だけ取る（R-2 §5 の hf_hub_download と同じファイル）。
+版（sha）は、同じ応答の X-Repo-Commit ヘッダーから取る（huggingface_hub も、この応答のヘッダーから取っている）。
 ページを描画した HTML には、マージされていない PR の第三者の値が混ざるため使わない（R-1 §4-1）。
-huggingface_hub は使わない：hf_hub_download は 429 でも内部で再試行し、企画書 §6-3 の「429 が返ったら止める」と
-合わないため。requests で 1 回ずつ取り、200 以外が返ったら止める（Google 側と同じ）。
+huggingface_hub と API は使わない：hf_hub_download は 429 でも内部で再試行し、企画書 §6-3 の「429 が返ったら止める」と
+合わないため。requests で 1 回だけ取り、200 以外が返ったら止める（Google 側と同じ）。
 メンバーが手動で実行する（企画書 §6-1）。取得結果は候補データで、正式データへは
 実行者以外のメンバーが出典ページと照合してから反映する（企画書 §3-2 ③）。
 
@@ -27,8 +28,7 @@ from scraper.values import NO_VALUE, clean_value
 # 取得元の版（Preview・正式版・V4.1-Flash）は R-3 で決める（R-1 §2）。決まるまで空にしておく
 REPO_IDS = []
 OFFICIAL_ORG = "deepseek-ai"
-API_URL = "https://huggingface.co/api/models/{repo_id}"
-README_URL = "https://huggingface.co/{repo_id}/resolve/{sha}/README.md"
+README_URL = "https://huggingface.co/{repo_id}/resolve/main/README.md"
 
 PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
@@ -144,21 +144,15 @@ def _get(url):
 
 
 def fetch_readme(repo_id):
-    """README.md の本文と、取得した版（sha）を返す。モデル情報と README を 1 回ずつ取り、200 以外なら止める。"""
+    """README.md の本文と、その応答が示す版（sha）を返す。README を 1 回だけ取り、200 以外なら止める。"""
     if repo_id.split("/")[0] != OFFICIAL_ORG:
         raise FetchStopped(f"{repo_id} は {OFFICIAL_ORG} のリポジトリではない。取得を止める")
-    api_url = API_URL.format(repo_id=repo_id)
-    try:
-        sha = _get(api_url).json().get("sha")
-    except (ValueError, AttributeError) as e:
-        # 200 でも JSON のオブジェクトでないなら、ボット判定の画面などかもしれない。回避せず止める
-        raise FetchStopped(f"{api_url} が JSON のオブジェクトではない。取得を止める") from e
+    res = _get(README_URL.format(repo_id=repo_id))
+    sha = res.headers.get("X-Repo-Commit")
     if not isinstance(sha, str) or not _SHA.fullmatch(sha):
-        raise FetchStopped(f"{repo_id} の版(sha)が読めない({sha!r})。取得を止める")
-    # API の呼び出しも 1 回のアクセスとして数え、README の取得との間にも間隔を空ける(企画書 §6-3)
-    time.sleep(MIN_INTERVAL_SEC)
+        raise FetchStopped(f"{repo_id} の応答に版(X-Repo-Commit)が無いか、読めない({sha!r})。取得を止める")
     # 本文はメモリ上だけで持ち、ファイルに残さない（企画書 §3-2 ①・§6-3）
-    return _get(README_URL.format(repo_id=repo_id, sha=sha)).content.decode("utf-8"), sha
+    return res.content.decode("utf-8"), sha
 
 
 def main():
