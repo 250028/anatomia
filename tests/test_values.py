@@ -9,6 +9,9 @@ class CleanValueTest(unittest.TestCase):
             with self.subTest(raw=raw):
                 self.assertEqual(clean_value(raw), want)
 
+    def test_先頭だけの_は外す(self):
+        self.assertEqual(clean_value("*37.7"), "37.7")
+
     def test_桁区切りでないカンマは残す(self):
         self.assertEqual(clean_value("1,2345"), "1,2345")
 
