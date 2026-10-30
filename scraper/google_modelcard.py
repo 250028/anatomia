@@ -18,6 +18,8 @@ from urllib.parse import urlparse
 
 import requests
 
+from scraper.values import NO_VALUE, clean_value
+
 # 取得してよいページを固定する。--url のような任意指定は設けない（R-2 の判定外のサイトに触れないため）
 MODEL_CARD_URLS = [
     "https://deepmind.google/models/model-cards/gemini-3-5-flash/",
@@ -113,12 +115,6 @@ def _expand(rows):
 
 # 値として読める形。ここに全体が合わないものは、黙って取り込まず「解釈できない値」にする
 _VALUE = re.compile(r"(-?\d+(?:\.\d+)?)\s*(%?)")
-_NO_VALUE = {"", "—", "–", "-"}
-
-
-def _clean_value(text):
-    """桁区切りのカンマと、末尾の脚注の記号を除く。"""
-    return re.sub(r"[*†‡§]+$", "", re.sub(r"(?<=\d),(?=\d{3}(?!\d))", "", text)).strip()
 
 
 def _join(*parts):
@@ -171,8 +167,8 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
             if text.startswith("$"):
                 skipped["料金の行（R-6 で扱う）"] += 1
                 continue
-            value = _clean_value(text)
-            if value in _NO_VALUE:
+            value = clean_value(text)
+            if value in NO_VALUE:
                 skipped["値なし（—・空欄）"] += 1
                 continue
             m = _VALUE.fullmatch(value)
