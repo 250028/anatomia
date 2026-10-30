@@ -1,7 +1,7 @@
 # R-4 主要ベンチマークの内容と領域の対応（最小版）
 
 > **目的**：ベンチマークを領域に分類する対応表の最小版を作る（企画書 §5 R-4、Linear 250-135）。画面の領域の列（企画書 §3-4）と、`data/domains.json`（企画書 §3-3）の根拠になる\
-> **調査日**：2026-10-28（下書き）。2026-10-30 に 8 行を arXiv の抄録で、3 行を公式ページで確認（Claude Code）。AIME は蒲山が AoPS Wiki のページを確認\
+> **調査日**：2026-10-28（下書き）。2026-10-30 に 8 行を arXiv の抄録で、3 行を公式ページで確認（Claude Code）。AIME は蒲山が MAA のページと AoPS Wiki のページを確認\
 > **調査方法**：企画書 §5 の候補と、[R-1](r1-benchmark-formats.md) に出てくるベンチマーク名を挙げ、それぞれが何を測るかを、作成者（Claude Code）の知識で書いた。**下書きのためにサイトへはアクセスしていない。** 2026-10-30 に、Claude Code が arXiv の抄録のページ 8 件と、公式ページ 3 件（swebench.com・hmmt.org・tbench.ai）を 1 件ずつ開いて、各行と突き合わせた（企業のサイトは開いていない。AIME の maa.org は 403 が返ったので、そこで止めた）。**論文の本文と公式サイトの確認はまだで、メンバーの確認も未。メンバーは自分のブラウザで確かめる**\
 > **注意**：**【案】**。「確認状況」が「未」「一部確認」の行と、メンバーが確認していない行は、領域の分類を決定として扱わない（AGENTS.md 禁則 7）。公表された値の測定条件の違い（R-5）は、ここでは扱わない
 
@@ -9,7 +9,7 @@
 
 ## 1. 結論
 
-- 領域を 5 つ、ベンチマークを 12 個、案として挙げた（§2）。**メンバーの確認は、どの行も未。** Claude Code が arXiv の抄録で突き合わせたのは 8 行で（§2）、LiveCodeBench と τ²-bench は説明を直し、GPQA Diamond・HLE・MMLU-Pro は気づいた点を書き足した。AIME は、蒲山が AoPS Wiki のページ（MAA の公式ページではない）で確認した。SWE-bench Verified・HMMT・Terminal-bench は公式ページ 1 つずつを Claude Code が見ただけ（HMMT の問題の形式と、Terminal-bench の版の違いは未確認）
+- 領域を 5 つ、ベンチマークを 12 個、案として挙げた（§2）。**メンバーの確認は、どの行も未。** Claude Code が arXiv の抄録で突き合わせたのは 8 行で（§2）、LiveCodeBench と τ²-bench は説明を直し、GPQA Diamond・HLE・MMLU-Pro は気づいた点を書き足した。AIME は、蒲山が MAA のページと AoPS Wiki のページで確認した。SWE-bench Verified・HMMT・Terminal-bench は公式ページ 1 つずつを Claude Code が見ただけ（HMMT の問題の形式と、Terminal-bench の版の違いは未確認）
 - ベンチマークの名前の出どころは 3 通り。企画書 §5 の候補が 6 つ（SWE-bench Verified、AIME、GPQA Diamond、MMMU、Humanity's Last Exam、τ²-bench）。R-1 に出てくるのが 3 つ（SWE-bench Verified、Terminal-bench、GPQA Diamond。Terminal-bench だけは §5 の候補にない）。残る 5 つ（LiveCodeBench、HMMT、MMLU-Pro、BrowseComp、OSWorld）は、作成者が追加した候補で、各社の表に載っているかも未確認
 - 分類は、そのベンチマークが主に測る能力で、領域を 1 つ決める（§3）。2 つの領域にまたがるものは、備考に書く
 - **Terminal-bench は、版によって内容が違う**（R-1 §4-2：2.1 は "Agentic terminal coding"、4.0 は "General agent capabilities"）ので、領域を版ごとに決める必要がある。この版の扱いは未決
@@ -30,7 +30,7 @@
 | --- | --- | --- | --- | --- |
 | SWE-bench Verified | 実在の GitHub リポジトリの Issue を、修正パッチで解決できるか。人手で解けると確かめられた問題の部分集合（swebench.com/verified.html では、元の SWE-bench から人が選んだ 500 件で、OpenAI との共同で作られた） | コーディング | 企画書 §5・R-1 §4-2 | 確認済み（Claude Code・2026-10-30・swebench.com/verified.html のみ。メンバー未確認。OpenAI のブログは開いていない） |
 | LiveCodeBench | LeetCode・AtCoder・CodeForces の新しい問題を集め続け（抄録では 2023 年 5 月〜2024 年 5 月で約 400 問）、コード生成に加えて、自己修正・コード実行・テスト出力の予測を測る。公開時期で問題を分け、学習データへの混入を避ける設計。**シナリオごとに値が違うときは、別の行にするかを判断する** | コーディング | 作成者の追加 | 確認済み（Claude Code・2026-10-30・arXiv:2403.07974 の抄録のみ。メンバー未確認） |
-| AIME | 米国の数学コンテスト AIME の問題（AoPS Wiki では、MAA が運営する 15 問・3 時間の記述式で、答えは 000〜999 の整数）。年ごとに問題が違うので、年は版として別に持つ。**同じ年に I と II の 2 回あった年〔2026-27 年度より前〕があるので、回も版に要るかを判断する**（2026-27 年度からは年 1 回で、前半 8 問・後半 7 問の 2 部構成になる、とも書かれている） | 数学 | 企画書 §5 | 確認済み（蒲山・2026-10-30・AoPS Wiki の AIME のページ〔https://artofproblemsolving.com/wiki/index.php/American_Invitational_Mathematics_Examination〕。**MAA の公式ページではなく、wiki の記述**。MAA の公式ページは未確認） |
+| AIME | 米国の数学コンテスト AIME の問題（15 問で、答えは 0〜999 の整数。MAA のページでは 2 部構成で各 90 分、AoPS Wiki では記述式・従来は 3 時間）。年ごとに問題が違うので、年は版として別に持つ。**同じ年に I と II の 2 回あった年〔2026-27 年度より前〕があるので、回も版に要るかを判断する**（2026-27 年度からは、2 部構成〔各 90 分〕のコンピューター受験になる。AoPS Wiki は年 1 回で前半 8 問・後半 7 問と書く。MAA のページは、2027 年 2 月 5 日と 6 日に Pearson のテストセンターで実施するとだけ書き、AIME I・II が続くかの FAQ の答えは貼られた本文にない） | 数学 | 企画書 §5 | 確認済み（蒲山・2026-10-30・MAA の Invitational Competitions のページ〔https://maa.org/maa-invitational-competitions/。蒲山が貼った本文の見出しによる〕と、AoPS Wiki の AIME のページ〔https://artofproblemsolving.com/wiki/index.php/American_Invitational_Mathematics_Examination〕。**年に何回あるか〔AIME I・II が続くか〕は、2 つの記述が食い違うように見え、未確認**） |
 | HMMT | 米国の数学コンテスト HMMT の問題。年は版として別に持つ（hmmt.org のトップページでは、学生が運営する高校生向けの大会で、11 月〔ハーバード〕と 2 月〔MIT〕の年 2 回。**問題の形式と答えが数値かは、トップページに記述がなく未確認**。年に加えて回〔11 月／2 月〕も版に要るかを判断する） | 数学 | 作成者の追加 | 一部確認（Claude Code・2026-10-30・hmmt.org のトップページのみ。メンバー未確認） |
 | GPQA Diamond | 大学院レベルの生物・物理・化学の 4 択問題で、難しい問題の部分集合（抄録は、専門家が作った 448 問の 4 択〔生物・物理・化学〕で、**Diamond の記述はない**。部分集合の点は未確認） | 科学的推論・知識 | 企画書 §5・R-1 §4-1 | 一部確認（Claude Code・2026-10-30・arXiv:2311.12022 の抄録のみ。**Diamond は未確認**。メンバー未確認） |
 | Humanity's Last Exam（HLE） | 各分野の専門家が作った、最先端の難しい問題（抄録では 2,500 問、数学・人文・自然科学など数十分野、選択式と短答式。**画像を含むマルチモーダル**で、マルチモーダルの領域に入れない理由を備考に残す） | 科学的推論・知識 | 企画書 §5 | 確認済み（Claude Code・2026-10-30・arXiv:2501.14249 の抄録のみ。メンバー未確認） |
@@ -67,7 +67,7 @@
 
 ## 6. この調査の限界
 
-- **確認したのは arXiv の抄録 8 件と、公式ページ 3 件のうち各 1 ページだけで、論文の本文は見ていない。** 抄録に書かれていない点（例：GPQA の Diamond）は未確認のまま。AIME は、蒲山が AoPS Wiki のページで確認したが、MAA の公式ページでの確認は済んでいない（maa.org は Claude Code の取得が 403 だったので、エージェントは回避せずに止めた。§6-3）。HMMT・Terminal-bench は公式のトップページを 1 つ見ただけで、問題の形式・版の違いは未確認。SWE-bench Verified は openai.com を開かず（AGENTS.md 禁則 2）、swebench.com で確認した
+- **確認したのは arXiv の抄録 8 件と、公式ページ 3 件のうち各 1 ページだけで、論文の本文は見ていない。** 抄録に書かれていない点（例：GPQA の Diamond）は未確認のまま。AIME は、蒲山が MAA のページと AoPS Wiki のページで確認した（maa.org は Claude Code の取得が 403 だったので、エージェントは回避せずに止めた。§6-3）。年に何回あるかは未確認。HMMT・Terminal-bench は公式のトップページを 1 つ見ただけで、問題の形式・版の違いは未確認。SWE-bench Verified は openai.com を開かず（AGENTS.md 禁則 2）、swebench.com で確認した
 - 5 つの追加候補（LiveCodeBench、HMMT、MMLU-Pro、BrowseComp、OSWorld）が、対象の 8 社の表に実際に載っているかは確かめていない。載っていなければ、対応表から外す
 - 対象の 15 モデルの公表値に出てくるベンチマークを、すべて網羅してはいない（最小版）
 - 領域の数（5）と名前は案で、画面の見せ方（企画書 §3-4）や R-5 の結果で変わりうる
