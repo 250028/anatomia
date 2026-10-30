@@ -9,10 +9,10 @@
 
 ## 1. 結論
 
-- 領域を 5 つ、ベンチマークを 12 個、案として挙げた（§2）。**メンバーの確認は、どの行も未。** Claude Code が arXiv の抄録で突き合わせたのは 8 行で（§2）、LiveCodeBench と τ²-bench は説明を直し、GPQA Diamond・HLE・MMLU-Pro は気づいた点を書き足した。AIME は、蒲山が MAA のページと AoPS Wiki のページで確認した。SWE-bench Verified・HMMT・Terminal-bench は公式ページ 1 つずつを Claude Code が見ただけ（HMMT の問題の形式と、Terminal-bench の版の違いは未確認）
+- 領域を 5 つ、ベンチマークを 12 個、案として挙げた（§2）。**メンバーの確認は、どの行も未。** Claude Code が arXiv の抄録で突き合わせたのは 8 行で（§2）、LiveCodeBench と τ²-bench は説明を直し、GPQA Diamond・HLE・MMLU-Pro は気づいた点を書き足した。AIME は、蒲山が MAA のページと AoPS Wiki のページで確認した。SWE-bench Verified・HMMT は公式ページ 1 つずつを、Terminal-bench は公式の記事 2 件を、Claude Code が見ただけ（HMMT の問題の形式と、Terminal-bench のタスクの種類・4.0 のタスク数は未確認）
 - ベンチマークの名前の出どころは 3 通り。企画書 §5 の候補が 6 つ（SWE-bench Verified、AIME、GPQA Diamond、MMMU、Humanity's Last Exam、τ²-bench）。R-1 に出てくるのが 3 つ（SWE-bench Verified、Terminal-bench、GPQA Diamond。Terminal-bench だけは §5 の候補にない）。残る 5 つ（LiveCodeBench、HMMT、MMLU-Pro、BrowseComp、OSWorld）は、作成者が追加した候補で、各社の表に載っているかも未確認
 - 分類は、そのベンチマークが主に測る能力で、領域を 1 つ決める（§3）。2 つの領域にまたがるものは、備考に書く
-- **Terminal-bench は、版によって内容が違う**（R-1 §4-2：2.1 は "Agentic terminal coding"、4.0 は "General agent capabilities"）ので、領域を版ごとに決める必要がある。この版の扱いは未決
+- **Terminal-bench は、版ごとに値を別に持つ。** 2.1 は 2.0 の 89 タスクのうち 28 を直した版、4.0 は飽和したタスクを外し、タスクを直した継続更新の版で、tbench.ai の記事にはどちらも「ターミナルでタスクを完了する能力を測る」ベンチマークの改訂とある。"Agentic terminal coding"（2.1）と "General agent capabilities"（4.0）は、R-1 §4-2 にある Google のモデルカードの付け方で、tbench.ai の記事にはない。そのため、版ごとに領域を分ける根拠は見つからなかった。**領域は「エージェント」の 1 つにする案**だが、コーディング寄りかの判断は、メンバーが決める【案】
 
 ## 2. 領域と対応表
 
@@ -36,7 +36,7 @@
 | Humanity's Last Exam（HLE） | 各分野の専門家が作った、最先端の難しい問題（抄録では 2,500 問、数学・人文・自然科学など数十分野、選択式と短答式。**画像を含むマルチモーダル**で、マルチモーダルの領域に入れない理由を備考に残す） | 科学的推論・知識 | 企画書 §5 | 確認済み（Claude Code・2026-10-30・arXiv:2501.14249 の抄録のみ。メンバー未確認） |
 | MMLU-Pro | 幅広い分野の知識を問う選択式（MMLU をより難しくしたもの。抄録では、選択肢を 4 つから 10 個に増やした推論重視の問題。**分野名は抄録にない。科学に限らない幅広い分野のため、領域の名前〔科学的推論・知識〕と合うかは要判断**） | 科学的推論・知識 | 作成者の追加 | 確認済み（Claude Code・2026-10-30・arXiv:2406.01574 の抄録のみ。メンバー未確認） |
 | τ²-bench | ユーザーとエージェントの**両方**がツールを使う共有の環境（dual-control）で、対話しながらタスクを完了できるか。抄録が挙げる領域は通信（Telecom）のみ | エージェント | 企画書 §5 | 確認済み（Claude Code・2026-10-30・arXiv:2506.07982 の抄録のみ。メンバー未確認） |
-| Terminal-bench | 端末（ターミナル）を操作してタスクを完了する能力。**版（2.1／4.0 など）ごとに領域を決める**（2.1 は "Agentic terminal coding" とあり、コーディング寄りの可能性。4.0 は "General agent capabilities"。tbench.ai は 4.0 だけを載せ、タスクの完了率で採点する。タスクの中身と、ほかの版との違いは、サイトに記述がなく未確認） | エージェント（版ごとに要判断） | R-1 §4-2 | 一部確認（Claude Code・2026-10-30・tbench.ai のトップページのみ。版の違いは未確認。メンバー未確認） |
+| Terminal-bench | 端末（ターミナル）を操作してタスクを完了する能力。**値は版（2.1／4.0 など）ごとに別に持つ**（tbench.ai の記事では、2.1 は 2.0〔89 タスク〕のうち 28 タスクの依存・資源・指示の食い違いを直した版。4.0 は飽和したタスク〔最新世代の全モデルが 5/5 で解く〕を外し、19 タスクを直した版で、3.0 からの破壊的な変更を含む。Google の "Agentic terminal coding"〔2.1〕・"General agent capabilities"〔4.0〕は Google の付け方で、tbench.ai の記事にはない） | エージェント（案。コーディング寄りかは要判断） | R-1 §4-2 | 一部確認（Claude Code・2026-10-30・tbench.ai/news/terminal-bench-2-1 と /terminal-bench-4-0 の 2 記事。蒲山が URL を示した。**タスクの種類の一覧と、4.0 のタスク数は記事になく未確認**。メンバーは記事の内容を未確認） |
 | BrowseComp | Web を探索して、見つけにくい情報を探し当てる能力（抄録では 1,266 問。答えは短く、基準の答えと照合できる） | エージェント | 作成者の追加 | 確認済み（Claude Code・2026-10-30・arXiv:2504.12516 の抄録のみ。メンバー未確認） |
 | OSWorld | 実際の OS の画面（GUI）を操作して、タスクを完了できるか（抄録では Ubuntu・Windows・macOS、369 タスク） | エージェント | 作成者の追加 | 確認済み（Claude Code・2026-10-30・arXiv:2404.07972 の抄録のみ。メンバー未確認） |
 | MMMU | 画像と文章を組み合わせた、大学レベルの多分野の問題（抄録では約 1.15 万問、6 分野 30 科目、画像は 30 種類） | マルチモーダル | 企画書 §5 | 確認済み（Claude Code・2026-10-30・arXiv:2311.16502 の抄録のみ。メンバー未確認） |
@@ -67,7 +67,7 @@
 
 ## 6. この調査の限界
 
-- **確認したのは arXiv の抄録 8 件と、公式ページ 3 件のうち各 1 ページだけで、論文の本文は見ていない。** 抄録に書かれていない点（例：GPQA の Diamond）は未確認のまま。AIME は、蒲山が MAA のページ（FAQ を含む）と AoPS Wiki のページで確認した（maa.org は Claude Code の取得が 403 だったので、エージェントは回避せずに止めた。§6-3）。2026 年以前の回の扱いは、各社の表記を見てから判断する。HMMT・Terminal-bench は公式のトップページを 1 つ見ただけで、問題の形式・版の違いは未確認。SWE-bench Verified は openai.com を開かず（AGENTS.md 禁則 2）、swebench.com で確認した
+- **確認したのは arXiv の抄録 8 件と、公式ページ 3 件のうち各 1 ページだけで、論文の本文は見ていない。** 抄録に書かれていない点（例：GPQA の Diamond）は未確認のまま。AIME は、蒲山が MAA のページ（FAQ を含む）と AoPS Wiki のページで確認した（maa.org は Claude Code の取得が 403 だったので、エージェントは回避せずに止めた。§6-3）。2026 年以前の回の扱いは、各社の表記を見てから判断する。HMMT は公式のトップページを 1 つ見ただけで問題の形式が未確認。Terminal-bench は公式の記事 2 件（2.1・4.0）で版の違いまで確認したが、タスクの種類の一覧と 4.0 のタスク数は未確認。SWE-bench Verified は openai.com を開かず（AGENTS.md 禁則 2）、swebench.com で確認した
 - 5 つの追加候補（LiveCodeBench、HMMT、MMLU-Pro、BrowseComp、OSWorld）が、対象の 8 社の表に実際に載っているかは確かめていない。載っていなければ、対応表から外す
 - 対象の 15 モデルの公表値に出てくるベンチマークを、すべて網羅してはいない（最小版）
 - 領域の数（5）と名前は案で、画面の見せ方（企画書 §3-4）や R-5 の結果で変わりうる
