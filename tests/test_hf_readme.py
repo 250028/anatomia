@@ -35,7 +35,7 @@ HEADING_LAYOUT = """
 """
 
 MODE_LAYOUT = """
-| | DeepSeek-V4-Pro Non-Think | DeepSeek-V4-Pro High | DeepSeek-V4-Pro Max | DeepSeek-V4-Flash Max | DeepSeek-V4-Base |
+| | DeepSeek-V4-Pro Non-Think | DeepSeek-V4-Pro High | DeepSeek-V4-Pro Max | DeepSeek-V4-Mini Max | DeepSeek-V4-Lite |
 | --- | --- | --- | --- | --- | --- |
 | Bench F | 60.0 | 68.0 | 72.0 | 65.0 | 50.0 |
 """
@@ -133,11 +133,11 @@ class ReadmeModeTest(unittest.TestCase):
             ("DeepSeek-V4-Pro", "Non-Think", 60.0),
             ("DeepSeek-V4-Pro", "High", 68.0),
             ("DeepSeek-V4-Pro", "Max", 72.0),
-            ("DeepSeek-V4-Flash", "Max", 65.0),
+            ("DeepSeek-V4-Mini", "Max", 65.0),
         ])
 
     def test_モードのない列は名前をそのまま持ち_モードは_None(self):
-        (r,) = [r for r in self.records if r["model"] == "DeepSeek-V4-Base"]
+        (r,) = [r for r in self.records if r["model"] == "DeepSeek-V4-Lite"]
         self.assertIsNone(r["mode"])
 
 
@@ -226,8 +226,171 @@ class TableBoundaryTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_readme(SHORT_ROW_LAYOUT, "https://example.test/card", "tester", "2026-10-22", "abc123")
 
+EXCLUDED_COLUMNS_LAYOUT = """
+| | DeepSeek-X-0813 | DeepSeek-X (Preview) | DeepSeek-Y-Base | Opus-X |
+| --- | --- | --- | --- | --- |
+| Bench V | 80.0 | 50.0 | 40.0 | 85.0 |
+"""
+
+BASE_FIRST_LAYOUT = """
+| | DeepSeek-Y-Base | DeepSeek-X-Base |
+| --- | --- | --- |
+| Bench W | 40.0 | 45.0 |
+
+| | Opus-X | DS-Y | DS-X |
+| --- | --- | --- | --- |
+| Bench W | 85.0 | 60.0 | 70.0 |
+"""
+
+ONLY_EXCLUDED_LAYOUT = """
+| | DeepSeek-Y-Base | DeepSeek-X (Preview) |
+| --- | --- | --- |
+| Bench W | 40.0 | 45.0 |
+"""
+
+NOT_TAKEN_LAYOUT = """
+| | DeepSeek-X-0813 | DeepSeek-V4-Flash-0731 |
+| --- | --- | --- |
+| Bench W | 70.0 | 60.0 |
+"""
+
+TWO_VALUES_LAYOUT = """
+| | DeepSeek-X-0813 | Opus-X |
+| --- | --- | --- |
+| Bench Z (wo / w tools) | 42.7 / 60.0 | 49.8 / 57.9 |
+| Bench Z2 (Pass@1) | 10.0 / 20.0 | 1.0 / 2.0 |
+| Bench Z3 (wo / w tools) | 5.0 | 6.0 |
+| Bench Z4 (wo / w tools) | 5.0 / — | 6.0 / 7.0 |
+"""
+
+DAGGER_LAYOUT = """
+| | DeepSeek-X-0813 | Opus-X |
+| --- | --- | --- |
+| Bench Y | 70.0 | 60.0 |
+| Internal Bench † | 71.1 | - |
+| Bench Y2 | 80.0† | 60.0 |
+"""
+
+
+class ColumnSelectionTest(unittest.TestCase):
+    def parse(self, layout):
+        return parse_readme(layout, "https://example.test/card", "tester", "2026-11-04", "abc123")
+
+    def test_Preview_と_Base_の列は取り込まない(self):
+        records, _, _ = self.parse(EXCLUDED_COLUMNS_LAYOUT)
+        self.assertEqual([(r["model"], r["score"]) for r in records], [("DeepSeek-X-0813", 80.0)])
+
+    def test_除いた列の数を数える(self):
+        _, skipped, _ = self.parse(EXCLUDED_COLUMNS_LAYOUT)
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 2)
+
+    def test_Base_の表が先にあっても_取りたい表を読む(self):
+        records, _, _ = self.parse(BASE_FIRST_LAYOUT)
+        self.assertEqual([(r["model"], r["score"]) for r in records], [("DeepSeek-Y", 60.0), ("DeepSeek-X", 70.0)])
+
+    def test_略称_DS_は_DeepSeek_に直す(self):
+        records, _, _ = self.parse(BASE_FIRST_LAYOUT)
+        self.assertEqual({r["model"] for r in records}, {"DeepSeek-Y", "DeepSeek-X"})
+
+    def test_Base_と_Preview_の列だけの表は読まず_数える(self):
+        _, skipped, _ = self.parse(BASE_FIRST_LAYOUT)
+        self.assertEqual(skipped["読まなかった表（Base・Preview の列だけ）"], 1)
+
+    def test_取る列がない表だけのときは止める(self):
+        with self.assertRaises(ValueError):
+            self.parse(ONLY_EXCLUDED_LAYOUT)
+
+    def test_対象外で取り込みが未決のモデルの列は取り込まず_数える(self):
+        records, skipped, _ = self.parse(NOT_TAKEN_LAYOUT)
+        self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-0813"})
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+
+
+ALIAS_NOT_TAKEN_LAYOUT = """
+| | Opus-X | DS-X-Pro | DS-V4-Flash | DS-V4.1-Flash |
+| --- | --- | --- | --- | --- |
+| Bench W | 85.0 | 60.0 | 55.0 | 70.0 |
+"""
+
+MODE_EXCLUDED_LAYOUT = """
+| | DeepSeek-X-0813 High | DeepSeek-V4-Flash-0731 Max | DeepSeek-Y-Base High | DeepSeek-X (Preview) Max |
+| --- | --- | --- | --- | --- |
+| Bench W | 70.0 | 60.0 | 40.0 | 50.0 |
+"""
+
+SPELLING_LAYOUT = """
+| | DeepSeek-X-0813 | DeepSeek-X Preview | DeepSeek-X preview | DeepSeek-Y base | DeepSeek-Y Base | DeepSeek-Y (Base) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Bench W | 70.0 | 1.0 | 2.0 | 3.0 | 4.0 | 5.0 |
+"""
+
+
+class NotTakenColumnTest(unittest.TestCase):
+    def parse(self, layout):
+        return parse_readme(layout, "https://example.test/card", "tester", "2026-11-04", "abc123")
+
+    def test_略称で書かれた取らないモデルの列も取り込まない(self):
+        records, skipped, _ = self.parse(ALIAS_NOT_TAKEN_LAYOUT)
+        self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-Pro", "DeepSeek-V4.1-Flash"})
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+
+    def test_推論モードが付いた列名でも除く(self):
+        records, skipped, _ = self.parse(MODE_EXCLUDED_LAYOUT)
+        self.assertEqual([(r["model"], r["mode"]) for r in records], [("DeepSeek-X-0813", "High")])
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 3)
+
+    def test_Preview_と_Base_の表記ゆれも除く(self):
+        records, skipped, _ = self.parse(SPELLING_LAYOUT)
+        self.assertEqual([r["model"] for r in records], ["DeepSeek-X-0813"])
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 5)
+
+
+class TwoValuesCellTest(unittest.TestCase):
+    def setUp(self):
+        self.records, self.skipped, self.unreadable = parse_readme(
+            TWO_VALUES_LAYOUT, "https://example.test/card", "tester", "2026-11-04", "abc123"
+        )
+
+    def test_見出しの括弧と値が同じ数なら_条件ごとの行に分ける(self):
+        got = [(r["benchmark"], r["condition"], r["score"]) for r in self.records if r["benchmark"] == "Bench Z"]
+        self.assertEqual(got, [("Bench Z", "wo", 42.7), ("Bench Z", "w tools", 60.0)])
+
+    def test_分けても元のセルを_raw_value_に残す(self):
+        rows = [r for r in self.records if r["benchmark"] == "Bench Z"]
+        self.assertEqual({r["raw_value"] for r in rows}, {"42.7 / 60.0"})
+
+    def test_括弧が値の数と対応しないときは_黙って分けず_別に出す(self):
+        got = [(u["benchmark"], u["raw_value"]) for u in self.unreadable]
+        self.assertIn(("Bench Z2 (Pass@1)", "10.0 / 20.0"), got)
+        self.assertNotIn("Bench Z2", [r["benchmark"] for r in self.records])
+
+    def test_値が1つなら_括弧に_スラッシュがあっても分けない(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench Z3"]
+        self.assertEqual((r["condition"], r["score"]), ("wo / w tools", 5.0))
+
+    def test_分けた片方が値なしなら_その片方だけ取らず数える(self):
+        rows = [r for r in self.records if r["benchmark"] == "Bench Z4"]
+        self.assertEqual([(r["condition"], r["score"]) for r in rows], [("wo", 5.0)])
+        self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
+
+
+class DaggerLabelTest(unittest.TestCase):
+    def setUp(self):
+        self.records, self.skipped, _ = parse_readme(
+            DAGGER_LAYOUT, "https://example.test/card", "tester", "2026-11-04", "abc123"
+        )
+
+    def test_名前に_が付いた行は取り込まず_数える(self):
+        self.assertNotIn("Internal Bench †", [r["benchmark"] for r in self.records])
+        self.assertEqual(self.skipped["名前に † が付いた行（社内テストなど。要確認）"], 1)
+
+    def test_値に付いた_は除いて読む(self):
+        (r,) = [r for r in self.records if r["benchmark"] == "Bench Y2"]
+        self.assertEqual(r["score"], 80.0)
+
+
 SHA = "a" * 40
-README_URL = "https://huggingface.co/deepseek-ai/X/resolve/main/README.md"
+README_URL ="https://huggingface.co/deepseek-ai/X/resolve/main/README.md"
 
 
 def readme_response(status=200, sha=SHA):
@@ -278,6 +441,13 @@ class FetchReadmeTest(unittest.TestCase):
                 self.assertEqual(get.call_count, 1)
 
 
+class RepoIdsTest(unittest.TestCase):
+    def test_取得先は公式組織のリポジトリだけ(self):
+        self.assertTrue(hf_readme.REPO_IDS)
+        for repo_id in hf_readme.REPO_IDS:
+            self.assertEqual(repo_id.split("/")[0], hf_readme.OFFICIAL_ORG)
+
+
 class MainTest(unittest.TestCase):
     def run_main(self, repo_ids, out):
         argv = ["hf_readme", "--by", "tester", "--out", str(out)]
@@ -292,6 +462,13 @@ class MainTest(unittest.TestCase):
             with mock.patch.object(hf_readme, "REPO_IDS", []), mock.patch("sys.argv", ["x", "--by", "t", "--out", d + "/o.json"]):
                 with self.assertRaises(SystemExit):
                     hf_readme.main()
+
+    def test_出典URLは取得した版の_README_のページにする(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "o.json"
+            self.run_main(["deepseek-ai/X"], out)
+            records = json.loads(out.read_text(encoding="utf-8"))["records"]
+        self.assertEqual({r["source_url"] for r in records}, {"https://huggingface.co/deepseek-ai/X/blob/abc123/README.md"})
 
     def test_間隔を空けて取得し_候補データを書く(self):
         with tempfile.TemporaryDirectory() as d:
