@@ -1,0 +1,11 @@
+モデル名,モデルの種類,推論モード,ベンチマーク名,ベンチマークの版・種類,スコア,単位,測定条件,取得元の表記,出典URL,取得日,取得者,READMEの版(sha),備考
+Grok 4.7,,xHigh,CursorBench,4.0,46.3,%,,46.3%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,High,DeepSWE,v1.1,71.0,%,脚注: high effort,71.0%*,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,表の列見出しは xHigh だが、この値は脚注で high effort
+Grok 4.7,,xHigh,EEBench,,64.0,%,,64.0%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,xHigh,AA Briefcase,v1.1,1657,,,"1,657",https://x.ai/news/grok-4-7,2026-11-04,鈴木,,単位の記載なし
+Grok 4.7,,xHigh,Terminal-Bench,4.0,37.6,%,,37.6%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,xHigh,Harvey Legal Agent Benchmark,,19.6,%,,19.6%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,xHigh,HealthBench,Professional,56.7,%,,56.7%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,xHigh,GDPval,,1695,Elo,,1695,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,
+Grok 4.7,,,LatchBio biosafety benchmark,,62.4,%,,62.4%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,文章中の数字(Safety & Cybersecurity の節)
+Grok 4.7,,,HackerBench,v0.3,3.3,%,危険な二重用途プロンプトの通過率,3.3%,https://x.ai/news/grok-4-7,2026-11-04,鈴木,,文章中の数字。低いほど安全
