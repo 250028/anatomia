@@ -463,6 +463,13 @@ class MainTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     hf_readme.main()
 
+    def test_出典URLは取得した版の_README_のページにする(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "o.json"
+            self.run_main(["deepseek-ai/X"], out)
+            records = json.loads(out.read_text(encoding="utf-8"))["records"]
+        self.assertEqual({r["source_url"] for r in records}, {"https://huggingface.co/deepseek-ai/X/blob/abc123/README.md"})
+
     def test_間隔を空けて取得し_候補データを書く(self):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "o.json"

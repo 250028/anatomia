@@ -168,7 +168,8 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
                 if not _VALUE.fullmatch(value):
                     unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
                     continue
-                # 出力の形は暫定。§3-3【案】が決まったら合わせる(google_modelcard.py の records と項目をそろえている)
+                # キー名は §3-3(Q-10 で決定)と google_modelcard.py の records に合わせている。
+                # 任意の model_type・benchmark_version・as_of は、まだ出さない
                 records.append({
                     "provider": PROVIDER,
                     "model": model,
@@ -218,14 +219,15 @@ def main():
     args = ap.parse_args()
 
     if not REPO_IDS:
-        sys.exit("取得するリポジトリが決まっていない(REPO_IDS が空。R-3 で決める)")
+        sys.exit("取得するリポジトリがない(REPO_IDS が空)")
     today = date.today().isoformat()
     all_records = []
     try:
         for repo_id in REPO_IDS:
             time.sleep(MIN_INTERVAL_SEC)
             text, sha = fetch_readme(repo_id)
-            url = f"https://huggingface.co/{repo_id}"
+            # 照合する人が、取得した版(sha)の README をブラウザでそのまま開けるようにする(企画書 §3-3 の出典URL)
+            url = f"https://huggingface.co/{repo_id}/blob/{sha}/README.md"
             records, skipped, unreadable = parse_readme(text, url, args.by, today, sha)
             print(f"{url}: {len(records)} 件。取り込まなかった: {dict(skipped)}", file=sys.stderr)
             for u in unreadable:
