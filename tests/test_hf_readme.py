@@ -35,7 +35,7 @@ HEADING_LAYOUT = """
 """
 
 MODE_LAYOUT = """
-| | DeepSeek-V4-Pro Non-Think | DeepSeek-V4-Pro High | DeepSeek-V4-Pro Max | DeepSeek-V4-Flash Max | DeepSeek-V4-Lite |
+| | DeepSeek-V4-Pro Non-Think | DeepSeek-V4-Pro High | DeepSeek-V4-Pro Max | DeepSeek-V4-Mini Max | DeepSeek-V4-Lite |
 | --- | --- | --- | --- | --- | --- |
 | Bench F | 60.0 | 68.0 | 72.0 | 65.0 | 50.0 |
 """
@@ -133,7 +133,7 @@ class ReadmeModeTest(unittest.TestCase):
             ("DeepSeek-V4-Pro", "Non-Think", 60.0),
             ("DeepSeek-V4-Pro", "High", 68.0),
             ("DeepSeek-V4-Pro", "Max", 72.0),
-            ("DeepSeek-V4-Flash", "Max", 65.0),
+            ("DeepSeek-V4-Mini", "Max", 65.0),
         ])
 
     def test_モードのない列は名前をそのまま持ち_モードは_None(self):
@@ -304,6 +304,45 @@ class ColumnSelectionTest(unittest.TestCase):
         records, skipped, _ = self.parse(NOT_TAKEN_LAYOUT)
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-0813"})
         self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+
+
+ALIAS_NOT_TAKEN_LAYOUT = """
+| | Opus-X | DS-X-Pro | DS-V4-Flash | DS-V4.1-Flash |
+| --- | --- | --- | --- | --- |
+| Bench W | 85.0 | 60.0 | 55.0 | 70.0 |
+"""
+
+MODE_EXCLUDED_LAYOUT = """
+| | DeepSeek-X-0813 High | DeepSeek-V4-Flash-0731 Max | DeepSeek-Y-Base High | DeepSeek-X (Preview) Max |
+| --- | --- | --- | --- | --- |
+| Bench W | 70.0 | 60.0 | 40.0 | 50.0 |
+"""
+
+SPELLING_LAYOUT = """
+| | DeepSeek-X-0813 | DeepSeek-X Preview | DeepSeek-X preview | DeepSeek-Y base | DeepSeek-Y Base | DeepSeek-Y (Base) |
+| --- | --- | --- | --- | --- | --- | --- |
+| Bench W | 70.0 | 1.0 | 2.0 | 3.0 | 4.0 | 5.0 |
+"""
+
+
+class NotTakenColumnTest(unittest.TestCase):
+    def parse(self, layout):
+        return parse_readme(layout, "https://example.test/card", "tester", "2026-11-04", "abc123")
+
+    def test_略称で書かれた取らないモデルの列も取り込まない(self):
+        records, skipped, _ = self.parse(ALIAS_NOT_TAKEN_LAYOUT)
+        self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-Pro", "DeepSeek-V4.1-Flash"})
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+
+    def test_推論モードが付いた列名でも除く(self):
+        records, skipped, _ = self.parse(MODE_EXCLUDED_LAYOUT)
+        self.assertEqual([(r["model"], r["mode"]) for r in records], [("DeepSeek-X-0813", "High")])
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 3)
+
+    def test_Preview_と_Base_の表記ゆれも除く(self):
+        records, skipped, _ = self.parse(SPELLING_LAYOUT)
+        self.assertEqual([r["model"] for r in records], ["DeepSeek-X-0813"])
+        self.assertEqual(skipped["除いた列（Preview・Base など）"], 5)
 
 
 class TwoValuesCellTest(unittest.TestCase):

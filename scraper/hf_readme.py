@@ -36,8 +36,11 @@ OWN_MODEL_PREFIX = "DeepSeek-"
 # 比較表では、自社の列が略称(DS-V4.1-Flash)で書かれることがある
 ALIAS_PREFIX = "DS-"
 # 取り込まない列。Preview は R-3 で「V4-Pro の値として使わない」とした。Base は別の種類のモデル。
-# DeepSeek-V4-Flash-0731 は R-3 の対象外で、取り込むかが未決(決まったらこの一覧から外す)
-NOT_TAKEN_MODELS = frozenset({"DeepSeek-V4-Flash-0731"})
+# DeepSeek-V4-Flash-0731 は R-3 の対象外で、取り込むかが未決(決まったらこの一覧から外す)。
+# V4.1-Flash の README の比較表は、同じモデルを略称 DS-V4-Flash と書くので、直した名前の DeepSeek-V4-Flash も同じ扱いにする
+NOT_TAKEN_MODELS = frozenset({"DeepSeek-V4-Flash-0731", "DeepSeek-V4-Flash"})
+_PREVIEW = re.compile(r"preview", re.IGNORECASE)
+_BASE = re.compile(r"(?:[-\s(])base\)?$", re.IGNORECASE)
 
 _VALUE = re.compile(r"-?\d+(?:\.\d+)?%?")
 
@@ -92,7 +95,9 @@ def _own_name(column):
 
 
 def _is_not_taken(name):
-    return "(Preview)" in name or name.endswith("-Base") or name in NOT_TAKEN_MODELS
+    # 列名には推論モードが付くことがあるので、モードを外した名前で判定する
+    model, _ = _split_mode(name)
+    return bool(_PREVIEW.search(model) or _BASE.search(model)) or model in NOT_TAKEN_MODELS
 
 
 def _is_taken_column(column):
