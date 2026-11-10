@@ -68,6 +68,7 @@
 ## 6. この調査の限界
 
 - **確認したのは arXiv の抄録 8 件と、公式ページ 4 件（swebench.com・hmmt.org が各 1、tbench.ai の記事が 2）だけで、論文の本文は見ていない。** 抄録に書かれていない点（例：GPQA の Diamond）は未確認のまま。AIME は、蒲山が MAA のページ（FAQ を含む）と AoPS Wiki のページで確認した（maa.org は Claude Code の取得が 403 だったので、エージェントは回避せずに止めた。§6-3）。2026 年以前の回の扱いは、各社の表記を見てから判断する。HMMT は公式のトップページを 1 つ見ただけで問題の形式が未確認。Terminal-bench は公式の記事 2 件（2.1・4.0）で版の違いまで確認したが、タスクの種類の一覧と 4.0 のタスク数は未確認。SWE-bench Verified は openai.com を開かず（AGENTS.md 禁則 2）、swebench.com で確認した
+- 2026-10-30 に Claude Code が開いた arxiv.org・swebench.com・hmmt.org・tbench.ai（maa.org は 403 で止めた）について、各サイトの利用規約と robots.txt は確かめていない（R-2 の対象外のサイト。企画書 §6-3 の「禁止されていない範囲でのみ」を満たすかは未確認）
 - 4 つの追加候補（LiveCodeBench、HMMT、MMLU-Pro、BrowseComp）が、対象の 8 社の表に実際に載っているかは確かめていない。載っていなければ、対応表から外す
 - 対象の 15 モデルの公表値に出てくるベンチマークを、すべて網羅してはいない（最小版）。R-1 に名前があるが、この最小版の表に入れていないもの：GDPval-AA／GDPVal-AA v2（R-1 §4-2）、τ³-Telecom（R-1 §2）、SWE-bench Pro（R-1 §4-2）。τ²-bench と τ³-Telecom の関係は未確認
 - 領域の数（5）と名前は案で、画面の見せ方（企画書 §3-4）や R-5 の結果で変わりうる
