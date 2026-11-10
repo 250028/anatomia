@@ -7,6 +7,24 @@ import json
 import tempfile
 import unittest
 
+REAL_TAKEN_MODELS = hf_readme.TAKEN_MODELS
+# 取る一覧は本物の名前なので、以下の自作の表(架空の名前)でも取れるよう、このファイルの間だけ架空の名前に差し替える。
+# 本物の一覧での動きは RealTakenModelsTest で確かめる
+_FICTIONAL_TAKEN = frozenset({
+    "DeepSeek-V4-Pro", "DeepSeek-V4-Mini", "DeepSeek-V4-Lite", "DeepSeek-X-0813", "DeepSeek-X-Pro",
+    "DeepSeek-X", "DeepSeek-Y", "DeepSeek-V4.1-Flash",
+})
+_patcher = mock.patch.object(hf_readme, "TAKEN_MODELS", _FICTIONAL_TAKEN)
+
+
+def setUpModule():
+    _patcher.start()
+
+
+def tearDownModule():
+    _patcher.stop()
+
+
 LAYOUT = """
 | | DeepSeek-V4-Pro High | Opus-X Max |
 | --- | --- | --- |
@@ -269,6 +287,10 @@ DAGGER_LAYOUT = """
 | Bench Y | 70.0 | 60.0 |
 | Internal Bench † | 71.1 | - |
 | Bench Y2 | 80.0† | 60.0 |
+| Internal † (Pass@1) | 72.0 | - |
+| Internal2† (wo / w tools) | 5.0 / 6.0 | - |
+| **Internal3 †** | 73.0 | - |
+| Internal4<sup>†</sup> | 74.0 | - |
 """
 
 
@@ -276,13 +298,13 @@ class ColumnSelectionTest(unittest.TestCase):
     def parse(self, layout):
         return parse_readme(layout, "https://example.test/card", "tester", "2026-11-04", "abc123")
 
-    def test_Preview_と_Base_の列は取り込まない(self):
+    def test_取る一覧にない_Preview_と_Base_の列は取り込まない(self):
         records, _, _ = self.parse(EXCLUDED_COLUMNS_LAYOUT)
         self.assertEqual([(r["model"], r["score"]) for r in records], [("DeepSeek-X-0813", 80.0)])
 
     def test_除いた列の数を数える(self):
         _, skipped, _ = self.parse(EXCLUDED_COLUMNS_LAYOUT)
-        self.assertEqual(skipped["除いた列（Preview・Base など）"], 2)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 2)
 
     def test_Base_の表が先にあっても_取りたい表を読む(self):
         records, _, _ = self.parse(BASE_FIRST_LAYOUT)
@@ -292,18 +314,18 @@ class ColumnSelectionTest(unittest.TestCase):
         records, _, _ = self.parse(BASE_FIRST_LAYOUT)
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-Y", "DeepSeek-X"})
 
-    def test_Base_と_Preview_の列だけの表は読まず_数える(self):
+    def test_取る一覧の列がない表は読まず_数える(self):
         _, skipped, _ = self.parse(BASE_FIRST_LAYOUT)
-        self.assertEqual(skipped["読まなかった表（Base・Preview の列だけ）"], 1)
+        self.assertEqual(skipped["読まなかった表（取る一覧の列がない）"], 1)
 
     def test_取る列がない表だけのときは止める(self):
         with self.assertRaises(ValueError):
             self.parse(ONLY_EXCLUDED_LAYOUT)
 
-    def test_対象外で取り込みが未決のモデルの列は取り込まず_数える(self):
+    def test_対象外のモデルの列は取り込まず_数える(self):
         records, skipped, _ = self.parse(NOT_TAKEN_LAYOUT)
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-0813"})
-        self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 1)
 
 
 ALIAS_NOT_TAKEN_LAYOUT = """
@@ -332,17 +354,35 @@ class NotTakenColumnTest(unittest.TestCase):
     def test_略称で書かれた取らないモデルの列も取り込まない(self):
         records, skipped, _ = self.parse(ALIAS_NOT_TAKEN_LAYOUT)
         self.assertEqual({r["model"] for r in records}, {"DeepSeek-X-Pro", "DeepSeek-V4.1-Flash"})
-        self.assertEqual(skipped["除いた列（Preview・Base など）"], 1)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 1)
 
     def test_推論モードが付いた列名でも除く(self):
         records, skipped, _ = self.parse(MODE_EXCLUDED_LAYOUT)
         self.assertEqual([(r["model"], r["mode"]) for r in records], [("DeepSeek-X-0813", "High")])
-        self.assertEqual(skipped["除いた列（Preview・Base など）"], 3)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 3)
 
     def test_Preview_と_Base_の表記ゆれも除く(self):
         records, skipped, _ = self.parse(SPELLING_LAYOUT)
         self.assertEqual([r["model"] for r in records], ["DeepSeek-X-0813"])
-        self.assertEqual(skipped["除いた列（Preview・Base など）"], 5)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 5)
+
+
+UNLISTED_LAYOUT = """
+| | DeepSeek-V4-Pro-0813 High | DS-V3.2 | DeepSeek-R2 | DeepSeek-X-Base-0813 | DeepSeek-Y-Base* | DeepSeek-V4-Flash-0731* | DS-V4.1-Flash |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Bench W | 70.0 | 1.0 | 2.0 | 3.0 | 4.0 | 5.0 | 6.0 |
+"""
+
+
+class RealTakenModelsTest(unittest.TestCase):
+    def test_取る一覧は_R3_の対象の2つ(self):
+        self.assertEqual(REAL_TAKEN_MODELS, {"DeepSeek-V4-Pro-0813", "DeepSeek-V4.1-Flash"})
+
+    def test_一覧にない列は綴りによらず取り込まず_数える(self):
+        with mock.patch.object(hf_readme, "TAKEN_MODELS", REAL_TAKEN_MODELS):
+            records, skipped, _ = parse_readme(UNLISTED_LAYOUT, "https://example.test/card", "tester", "2026-11-10", "abc123")
+        self.assertEqual([(r["model"], r["mode"]) for r in records], [("DeepSeek-V4-Pro-0813", "High"), ("DeepSeek-V4.1-Flash", None)])
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 5)
 
 
 class TwoValuesCellTest(unittest.TestCase):
@@ -382,7 +422,10 @@ class DaggerLabelTest(unittest.TestCase):
 
     def test_名前に_が付いた行は取り込まず_数える(self):
         self.assertNotIn("Internal Bench †", [r["benchmark"] for r in self.records])
-        self.assertEqual(self.skipped["名前に † が付いた行（社内テストなど。要確認）"], 1)
+
+    def test_括弧の前や太字の中に_が付いた行も取り込まない(self):
+        self.assertEqual([r["benchmark"] for r in self.records], ["Bench Y", "Bench Y2"])
+        self.assertEqual(self.skipped["名前に † が付いた行（社内テストなど。要確認）"], 5)
 
     def test_値に付いた_は除いて読む(self):
         (r,) = [r for r in self.records if r["benchmark"] == "Bench Y2"]
@@ -390,7 +433,7 @@ class DaggerLabelTest(unittest.TestCase):
 
 
 SHA = "a" * 40
-README_URL ="https://huggingface.co/deepseek-ai/X/resolve/main/README.md"
+README_URL = "https://huggingface.co/deepseek-ai/X/resolve/main/README.md"
 
 
 def readme_response(status=200, sha=SHA):

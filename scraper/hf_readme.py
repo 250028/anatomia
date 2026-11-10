@@ -35,12 +35,9 @@ PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
 # 比較表では、自社の列が略称(DS-V4.1-Flash)で書かれることがある
 ALIAS_PREFIX = "DS-"
-# 取り込まない列。Preview は R-3 で「V4-Pro の値として使わない」とした。Base は別の種類のモデル。
-# DeepSeek-V4-Flash-0731 は R-3 の対象外で、取り込むかが未決(決まったらこの一覧から外す)。
-# V4.1-Flash の README の比較表は、同じモデルを略称 DS-V4-Flash と書くので、直した名前の DeepSeek-V4-Flash も同じ扱いにする
-NOT_TAKEN_MODELS = frozenset({"DeepSeek-V4-Flash-0731", "DeepSeek-V4-Flash"})
-_PREVIEW = re.compile(r"preview", re.IGNORECASE)
-_BASE = re.compile(r"(?:[-\s(])base\)?$", re.IGNORECASE)
+# 取る列は「取る一覧」で決める(R-3 §2 の対象だけ。正式版は README の列名 -0813 で書く)。
+# 一覧にない列(Preview・Base・対象外のモデル・README に新しく増えた列)は、取り込まずに数える。足すときは企画書 §4-3 の「見直し」で行う
+TAKEN_MODELS = frozenset({"DeepSeek-V4-Pro-0813", "DeepSeek-V4.1-Flash"})
 
 _VALUE = re.compile(r"-?\d+(?:\.\d+)?%?")
 
@@ -94,15 +91,13 @@ def _own_name(column):
     return None
 
 
-def _is_not_taken(name):
-    # 列名には推論モードが付くことがあるので、モードを外した名前で判定する
-    model, _ = _split_mode(name)
-    return bool(_PREVIEW.search(model) or _BASE.search(model)) or model in NOT_TAKEN_MODELS
-
-
 def _is_taken_column(column):
     name = _own_name(column)
-    return name is not None and not _is_not_taken(name)
+    if name is None:
+        return False
+    # 列名には推論モードが付くことがあるので、モードを外した名前で判定する
+    model, _ = _split_mode(name)
+    return model in TAKEN_MODELS
 
 
 def _split_cell(cell, condition):
@@ -120,11 +115,11 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     tables = _tables(text)
     if not tables:
         raise ValueError("Markdown の表が見つからない(README の構造が変わった可能性)")
-    # 取る列(Preview・Base などを除いた自社の列)を持つ表のうち、最初の 1 つだけを読む。残りは数えて知らせる(黙って捨てない)
+    # 取る列(取る一覧にある自社の列)を持つ表のうち、最初の 1 つだけを読む。残りは数えて知らせる(黙って捨てない)
     own_tables = [t for t in tables if any(_is_taken_column(c) for c in t[0])]
     not_taken_tables = [t for t in tables if t not in own_tables and any(_own_name(c) for c in t[0])]
     if not own_tables:
-        raise ValueError("取る列(DeepSeek- か DS- で始まり、Preview・Base でない列)を持つ表が見つからない(README の構造が変わった可能性)")
+        raise ValueError("取る列(DeepSeek- か DS- で始まり、取る一覧にある列)を持つ表が見つからない(README の構造が変わった可能性)")
     table = own_tables[0]
     header, rows = table[0], table[2:]
     for row in rows:
@@ -134,14 +129,14 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     if len(own_tables) > 1:
         skipped["読まなかった表（自社の列あり）"] = len(own_tables) - 1
     if not_taken_tables:
-        skipped["読まなかった表（Base・Preview の列だけ）"] = len(not_taken_tables)
+        skipped["読まなかった表（取る一覧の列がない）"] = len(not_taken_tables)
     body = []
     for row in rows:
         if all(c == "" for c in row[1:]):
             skipped["見出し行"] += 1
             continue
-        # † は README ごとに意味が違う(社内テスト、テキストのみの部分集合など)。名前に付いた行は、意味を確かめるまで取らない
-        if row[0].endswith("†"):
+        # † は README ごとに意味が違う(社内テスト、テキストのみの部分集合など)。名前のどこかに付いた行(括弧の前や太字の中を含む)は、意味を確かめるまで取らない
+        if "†" in row[0]:
             skipped["名前に † が付いた行（社内テストなど。要確認）"] += 1
             continue
         body.append(row)
@@ -151,10 +146,10 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
         name = _own_name(column)
         if name is None:
             continue
-        if _is_not_taken(name):
-            skipped["除いた列（Preview・Base など）"] += 1
-            continue
         model, mode = _split_mode(name)
+        if model not in TAKEN_MODELS:
+            skipped["除いた列（取る一覧にない）"] += 1
+            continue
         for row in body:
             benchmark, condition, unit = _split_benchmark(row[0])
             cells = _split_cell(row[i], condition)
