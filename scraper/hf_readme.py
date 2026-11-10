@@ -152,6 +152,10 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
             continue
         for row in body:
             benchmark, condition, unit = _split_benchmark(row[0])
+            # 値に付いた † も、名前に付いた場合と同じく意味が分からないので、外して読まずに「要確認」に出す(raw_value には元のセルが残る)
+            if "†" in row[i]:
+                unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
+                continue
             cells = _split_cell(row[i], condition)
             if cells is None:
                 unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})

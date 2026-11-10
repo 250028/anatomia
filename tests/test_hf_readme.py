@@ -275,7 +275,7 @@ NOT_TAKEN_LAYOUT = """
 TWO_VALUES_LAYOUT = """
 | | DeepSeek-X-0813 | Opus-X |
 | --- | --- | --- |
-| Bench Z (wo / w tools) | 42.7 / 60.0 | 49.8 / 57.9 |
+| Bench Z (wo / w tools) | 12.5 / 33.5 | 4.0 / 8.0 |
 | Bench Z2 (Pass@1) | 10.0 / 20.0 | 1.0 / 2.0 |
 | Bench Z3 (wo / w tools) | 5.0 | 6.0 |
 | Bench Z4 (wo / w tools) | 5.0 / — | 6.0 / 7.0 |
@@ -393,11 +393,11 @@ class TwoValuesCellTest(unittest.TestCase):
 
     def test_見出しの括弧と値が同じ数なら_条件ごとの行に分ける(self):
         got = [(r["benchmark"], r["condition"], r["score"]) for r in self.records if r["benchmark"] == "Bench Z"]
-        self.assertEqual(got, [("Bench Z", "wo", 42.7), ("Bench Z", "w tools", 60.0)])
+        self.assertEqual(got, [("Bench Z", "wo", 12.5), ("Bench Z", "w tools", 33.5)])
 
     def test_分けても元のセルを_raw_value_に残す(self):
         rows = [r for r in self.records if r["benchmark"] == "Bench Z"]
-        self.assertEqual({r["raw_value"] for r in rows}, {"42.7 / 60.0"})
+        self.assertEqual({r["raw_value"] for r in rows}, {"12.5 / 33.5"})
 
     def test_括弧が値の数と対応しないときは_黙って分けず_別に出す(self):
         got = [(u["benchmark"], u["raw_value"]) for u in self.unreadable]
@@ -416,7 +416,7 @@ class TwoValuesCellTest(unittest.TestCase):
 
 class DaggerLabelTest(unittest.TestCase):
     def setUp(self):
-        self.records, self.skipped, _ = parse_readme(
+        self.records, self.skipped, self.unreadable = parse_readme(
             DAGGER_LAYOUT, "https://example.test/card", "tester", "2026-11-04", "abc123"
         )
 
@@ -424,12 +424,13 @@ class DaggerLabelTest(unittest.TestCase):
         self.assertNotIn("Internal Bench †", [r["benchmark"] for r in self.records])
 
     def test_括弧の前や太字の中に_が付いた行も取り込まない(self):
-        self.assertEqual([r["benchmark"] for r in self.records], ["Bench Y", "Bench Y2"])
+        self.assertEqual([r["benchmark"] for r in self.records], ["Bench Y"])
         self.assertEqual(self.skipped["名前に † が付いた行（社内テストなど。要確認）"], 5)
 
-    def test_値に付いた_は除いて読む(self):
-        (r,) = [r for r in self.records if r["benchmark"] == "Bench Y2"]
-        self.assertEqual(r["score"], 80.0)
+    def test_値に付いた_は取り込まず_要確認に元のセルごと出す(self):
+        self.assertNotIn("Bench Y2", [r["benchmark"] for r in self.records])
+        got = [(u["benchmark"], u["raw_value"]) for u in self.unreadable]
+        self.assertEqual(got, [("Bench Y2", "80.0†")])
 
 
 SHA = "a" * 40
