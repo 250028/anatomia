@@ -1,17 +1,13 @@
 """Anatomia の画面(MVP)。「モデル×ベンチマーク」の表を、出典つきで 1 画面に出す。
 
 動かし方(リポジトリのルートで。起動したら、ブラウザで http://127.0.0.1:8501 を開く):
-    streamlit run viewer/app.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
-        → 正式データ(data/official/)を読む
-    streamlit run viewer/app.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false -- --dummy
-        → ダミーデータ(tests/fixtures/official/)を読む(`--` の後ろが、このファイルへの引数)
+    streamlit run viewer/app.py              → 正式データ(data/official/)を読む
+    streamlit run viewer/app.py -- --dummy   → ダミーデータ(tests/fixtures/official/)を読む(`--` の後ろが、このファイルへの引数)
 
-    3 つのオプションを付ける理由(既定値は Streamlit 1.67.0 の `streamlit config show` と、手元での起動で確かめた):
-    - `--server.address 127.0.0.1`：自分の PC だけで待ち受ける。付けないと、すべての口で待ち受けてほかの PC からも開け、
-      起動時に外向きの IP を調べて External URL として表示する。公開範囲は企画書 §6-4 で【未決】(§8 Q-2)なので、公開しない側に倒す
-    - `--server.headless true`：起動したときに、ブラウザを自動で開かない。既定は「Linux で DISPLAY が無いときだけ開かない」で、
-      PC(WSL かどうかなど)によって動きが変わるので、どの PC でも同じ動きにそろえるため
-    - `--browser.gatherUsageStats false`：利用状況を外(Streamlit 社)へ送らない(既定は送る)。画面からネットワークへ出ないようにするため
+    起動の設定(自分の PC だけで待ち受ける・ブラウザを自動で開かない・利用状況を外へ送らない)と文字の大きさは、
+    リポジトリのルートの .streamlit/config.toml に 1 か所でまとめ、理由もそこに書いた。Streamlit は「実行したディレクトリ」の
+    .streamlit/config.toml を読むので、必ずリポジトリのルートで実行する。ほかのディレクトリで実行すると設定が読まれず、
+    Streamlit の既定(すべての口で待ち受ける・利用状況を送る・文字 16px)になる
 
 方針:
 - このファイルは「ロジック層(viewer/records.py・viewer/grid.py)の関数を呼んで、表示するだけ」にする。
@@ -83,9 +79,14 @@ MODELS_AS_ROWS = "モデルを行に"
 BENCHMARKS_AS_ROWS = "ベンチマークを行に"
 
 # ---- 表の大きさ(数値は Streamlit 1.67.0 の st.dataframe の docstring と、同梱の画面側のコードで確かめた) ----
-# 行の高さ(px)。既定は 35px(1 行の文字が入る高さ)。1 行の文字(13〜14px)が入る範囲で詰め、同じ画面に入る行を増やす
+# 文字の基準の大きさ(.streamlit/config.toml の theme.baseFontSize)と、既定の 16px との比。
+# 表の行の高さ・見出しの高さは、画面側でこの比で大きくなる(1.67.0 の同梱の画面側のコードで確かめた)。
+# 下の px の数は 16px のときの値で書き、px で高さを決める所(詳細の欄・行が多いときの表)だけ、この比を掛ける
+FONT_SCALE = (st.get_option("theme.baseFontSize") or 16) / 16
+# 行の高さ(16px のときの px。文字が 18px なら、画面では 28 × 18/16 ≒ 32px)。既定は 35px。
+# 文字(16px のとき 14px)の 2 倍で、文字が詰まって見えない範囲で詰め、同じ画面に入る行を増やす
 ROW_HEIGHT = 28
-# 見出しの行の高さ(px)。st.dataframe では変えられず、1.67.0 の画面側の既定値(2.1875rem = 35px)
+# 見出しの行の高さ(16px のときの px)。st.dataframe では変えられず、1.67.0 の画面側の既定値(2.1875rem = 35px)
 HEADER_HEIGHT = 35
 # 表の中をスクロールせずに全行を出す、行の数の上限。28px × 30 行 + 見出しで約 880px で、1920×1080 の画面の
 # 表示できる高さにおおよそ収まる。これを超えると、ページのスクロールで見出しが画面の外に出て、どの列か分からなくなる。
@@ -93,7 +94,8 @@ HEADER_HEIGHT = 35
 MAX_ROWS_WITHOUT_SCROLL = 30
 # 詳細の欄の高さ(px)。見出し＋値 2 件(測定条件違い)が入る高さ。表の上に高さを固定して置くので、
 # セルを選んでも表の位置が動かない。3 件以上のときは、この欄の中でスクロールする
-DETAIL_HEIGHT = HEADER_HEIGHT + 2 * ROW_HEIGHT + 2
+# (+8 は、文字の大きさの比で丸めたときのずれの余裕)
+DETAIL_HEIGHT = round((HEADER_HEIGHT + 2 * ROW_HEIGHT + 2) * FONT_SCALE) + 8
 
 
 # サイドバーの幅(px)。限界の 3 文・絞り込み・向き・最終取得日・凡例が、折り返しても読みやすく入る幅。
@@ -120,7 +122,7 @@ def table_height(row_count):
     """表の高さ。上限までは "content"(全行がちょうど入る高さ)、超えたら上限の行数ぶんの高さに固定する。"""
     if row_count <= MAX_ROWS_WITHOUT_SCROLL:
         return "content"
-    return HEADER_HEIGHT + MAX_ROWS_WITHOUT_SCROLL * ROW_HEIGHT + 2  # 2 は上下の枠線(1px ずつ)
+    return round((HEADER_HEIGHT + MAX_ROWS_WITHOUT_SCROLL * ROW_HEIGHT) * FONT_SCALE) + 2  # 2 は上下の枠線(1px ずつ)
 
 
 def styled_table(header, rows, grid, transposed):
