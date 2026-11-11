@@ -128,8 +128,9 @@ class DummyDataTest(unittest.TestCase):
     def test_読んだ件数は_12_件(self):
         self.assertTrue(any("12 件" in c.value for c in self.at.caption))
 
-    def test_有効性の限界の_3_つが出る(self):
-        text = "\n".join(i.value for i in self.at.info)
+    def test_有効性の限界の_3_つがサイドバーに折りたたまずに出る(self):
+        text = "\n".join(i.value for i in self.at.sidebar.info)
+        self.assertEqual(len(self.at.expander), 0)  # 「常に出すもの」を折りたたみの中に隠さない
         for limit in (
             "公表値は各社の自己申告であり、第三者が検証した値ではない",
             "各社は得意なベンチマークを選んで公表する傾向があり、弱みは「未公表」として現れやすい",
@@ -138,9 +139,25 @@ class DummyDataTest(unittest.TestCase):
             with self.subTest(limit=limit):
                 self.assertIn(limit, text)
 
-    def test_企業ごとの最終取得日が表で出る(self):
-        (last,) = tables(self.at, "企業")
+    def test_企業ごとの最終取得日がサイドバーに表で出る(self):
+        (last,) = [d.value for d in self.at.sidebar.dataframe]
+        self.assertEqual(list(last.columns), ["企業", "最終取得日"])
         self.assertEqual(last.values.tolist(), [["ダミー社A", "2026-10-01"], ["ダミー社B", "2026-10-15"]])
+
+    def test_絞り込みと向きの切り替えはサイドバーにある(self):
+        self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業"])
+        self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
+
+    def test_本文は_ダミーの表示_詳細の欄_表の順(self):
+        types = [self.at.main[i].type for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
+        self.assertEqual(types[0], "warning")
+        self.assertEqual(types.index("flex_container") + 1, types.index("dataframe"))  # 詳細の欄は表のすぐ上
+
+    def test_見出しの列は左に固定し_行の高さを詰める(self):
+        (element,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
+        config = json.loads(element.proto.columns)
+        self.assertEqual(sorted(k for k, v in config.items() if v.get("pinned")), sorted(["提供企業", "モデル", "種類", "推論モード"]))
+        self.assertEqual(element.proto.row_height, 28)
 
     def test_表は_6_行で_順位や平均の列が無い(self):
         table = main_table(self.at)
@@ -172,14 +189,22 @@ class DummyDataTest(unittest.TestCase):
         i = row_index_of(table, "Model-A1", "Reasoning", "High")
         self.assertEqual(table.loc[i, "Bench-W"], "55.1% / 63.4%※")
 
-    def test_企業で絞ると行が減り_最終取得日もその企業だけになる(self):
+    def test_企業で絞るとその企業だけになり_既定の向きは絞った後のデータで決まる(self):
+        # ダミー社B はモデル 2・ベンチマーク 3。ベンチマークのほうが多いので、既定はベンチマークを行に
         self.at.multiselect(key="企業").set_value(["ダミー社B"])
         rerun(self.at, "--dummy")
-        table = main_table(self.at)
-        self.assertEqual(len(table), 2)
-        self.assertEqual(set(table["提供企業"]), {"ダミー社B"})
-        (last,) = tables(self.at, "企業")
+        self.assertEqual(self.at.radio(key="表の向き").value, "ベンチマークを行に")
+        (table,) = tables(self.at, "ベンチマーク")
+        self.assertEqual(list(table.columns), ["ベンチマーク", "Model-B1", "Model-B2 (Max)"])
+        self.assertEqual(list(table["ベンチマーク"]), ["提供企業", "Bench-X", "Bench-Y", "Bench-Z"])
+        self.assertEqual(table.iloc[0].tolist(), ["提供企業", "ダミー社B", "ダミー社B"])
+        (last,) = [d.value for d in self.at.sidebar.dataframe]
         self.assertEqual(last.values.tolist(), [["ダミー社B", "2026-10-15"]])
+        # 全社に戻すと、モデル 6・ベンチマーク 5 なので、モデルを行にに戻る(自分で切り替えていないため)
+        self.at.multiselect(key="企業").set_value(["ダミー社A", "ダミー社B"])
+        rerun(self.at, "--dummy")
+        self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")
+        self.assertEqual(len(main_table(self.at)), 6)
 
     def test_企業を全部外すと表を出さずに案内する(self):
         self.at.multiselect(key="企業").set_value([])
@@ -242,7 +267,7 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(len(self.at.exception), 0)
         self.assertEqual(len(tables(self.at, "提供企業")), 1)
         self.assertEqual(self.details(), [])
-        self.assertTrue(any("ベンチマークの列のセルを選ぶと" in c.value for c in self.at.caption))
+        self.assertTrue(any("スコアのセル" in c.value for c in self.at.caption))
         self.assertFalse(any("選んだセルは「未公表」" in i.value for i in self.at.info))
 
     def test_範囲外の行や存在しない列を選んでも落ちず_詳細は出ない(self):
@@ -262,9 +287,69 @@ class DummyDataTest(unittest.TestCase):
         self.at.multiselect(key="企業").set_value(["ダミー社B"])
         rerun(self.at, "--dummy")
         self.assertEqual(len(self.at.exception), 0)
-        self.assertEqual(set(main_table(self.at)["提供企業"]), {"ダミー社B"})
+        (table,) = tables(self.at, "ベンチマーク")  # 絞った後の既定の向き
+        self.assertEqual(table.iloc[0].tolist()[1:], ["ダミー社B", "ダミー社B"])
         self.assertEqual(self.details(), [])
         self.assertTrue(any("セルを 1 つ選ぶと" in c.value for c in self.at.caption))
+
+    # ---- 表の向き ----
+    def transpose(self):
+        self.at.radio(key="表の向き").set_value("ベンチマークを行に")
+        return rerun(self.at, "--dummy")
+
+    def test_向きを入れ替えると_ベンチマークが行_モデルが列になる(self):
+        normal = main_table(self.at)
+        (first,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
+        modes_before = list(first.proto.selection_mode)
+        self.transpose()
+        self.assertEqual(len(self.at.exception), 0)
+        (table,) = tables(self.at, "ベンチマーク")
+        self.assertEqual(list(table.columns)[1:], [
+            "Model-A1 (Instruct)", "Model-A1 (Reasoning / High)", "Model-A1 (Reasoning / Non-Think)",
+            "Model-A2", "Model-B1", "Model-B2 (Max)",
+        ])
+        self.assertEqual(list(table["ベンチマーク"]), ["提供企業", "Bench-V 2.1", "Bench-W", "Bench-X", "Bench-Y", "Bench-Z"])
+        self.assertEqual(table.loc[2, "Model-A1 (Reasoning / High)"], "55.1% / 63.4%※")
+        # セルの総数と、未公表・※ の数は、向きを変えても同じ
+        before = normal.iloc[:, 4:].values.ravel().tolist()
+        after = table.iloc[1:, 1:].values.ravel().tolist()
+        self.assertEqual(len(before), len(after))
+        self.assertEqual(before.count("未公表"), after.count("未公表"))
+        self.assertEqual(sum("※" in c for c in before), sum("※" in c for c in after))
+        (element,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
+        config = json.loads(element.proto.columns)
+        self.assertEqual([k for k, v in config.items() if v.get("pinned")], ["ベンチマーク"])
+        # セルの選択と、並べ替えを止めるための列の選択は、どちらの向きでも同じ
+        self.assertEqual(list(element.proto.selection_mode), modes_before)
+
+    def test_入れ替えた向きでも_セルを選ぶと同じ詳細が出る(self):
+        i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
+        self.select(i, "Bench-W")
+        (normal,) = self.details()
+        self.transpose()
+        self.assertEqual(self.details(), [])  # 向きを変えると選択は外れる
+        self.select(2, "Model-A1 (Reasoning / High)")  # 2 行目(提供企業の行の次から数えて 2 つ目)= Bench-W
+        (transposed,) = self.details()
+        self.assertEqual(transposed.values.tolist(), normal.values.tolist())
+
+    def test_入れ替えた向きで提供企業の行やベンチマーク名の列を選んでも詳細は出ない(self):
+        self.transpose()
+        for row_index, column in ((0, "Model-A2"), (1, "ベンチマーク")):
+            with self.subTest(row=row_index, column=column):
+                self.select(row_index, column)
+                self.assertEqual(len(self.at.exception), 0)
+                self.assertEqual(self.details(), [])
+                self.assertTrue(any("スコアのセル" in c.value for c in self.at.caption))
+
+    def test_自分で選んだ向きは_絞り込みを変えても保つ(self):
+        self.transpose()
+        self.at.radio(key="表の向き").set_value("モデルを行に")
+        rerun(self.at, "--dummy")
+        # ダミー社B だけなら既定はベンチマークを行にだが、自分で選んだモデルを行にを保つ
+        self.at.multiselect(key="企業").set_value(["ダミー社B"])
+        rerun(self.at, "--dummy")
+        self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")
+        self.assertEqual(set(main_table(self.at)["提供企業"]), {"ダミー社B"})
 
 
 @unittest.skipIf(AppTest is None, SKIP_REASON)

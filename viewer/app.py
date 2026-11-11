@@ -42,9 +42,14 @@ from viewer.grid import (  # noqa: E402(上の sys.path の後で import する)
     companies,
     detail_items,
     filter_by_company,
+    label_conflicts,
     last_retrieved_by_company,
+    pair_at,
+    prefers_transposed,
     table_header,
     table_rows,
+    transposed_header,
+    transposed_rows,
 )
 from viewer.records import RecordError, load_official  # noqa: E402
 
@@ -64,27 +69,54 @@ LIMITS = [
     "手動更新のため、最新モデルの反映に遅れが出る",
 ]
 
+# 表の向きの選択肢(サイドバーの切り替え)
+MODELS_AS_ROWS = "モデルを行に"
+BENCHMARKS_AS_ROWS = "ベンチマークを行に"
+
+# ---- 表の大きさ(数値は Streamlit 1.67.0 の st.dataframe の docstring と、同梱の画面側のコードで確かめた) ----
+# 行の高さ(px)。既定は 35px(1 行の文字が入る高さ)。1 行の文字(13〜14px)が入る範囲で詰め、同じ画面に入る行を増やす
+ROW_HEIGHT = 28
+# 見出しの行の高さ(px)。st.dataframe では変えられず、1.67.0 の画面側の既定値(2.1875rem = 35px)
+HEADER_HEIGHT = 35
+# 表の中をスクロールせずに全行を出す、行の数の上限。28px × 30 行 + 見出しで約 880px で、1920×1080 の画面の
+# 表示できる高さにおおよそ収まる。これを超えると、ページのスクロールで見出しが画面の外に出て、どの列か分からなくなる。
+# そのため、超えたときは表をこの行数の高さに固定し、表の中でスクロールする(見出しは表の上に残る)
+MAX_ROWS_WITHOUT_SCROLL = 30
+# 詳細の欄の高さ(px)。見出し＋値 2 件(測定条件違い)が入る高さ。表の上に高さを固定して置くので、
+# セルを選んでも表の位置が動かない。3 件以上のときは、この欄の中でスクロールする
+DETAIL_HEIGHT = HEADER_HEIGHT + 2 * ROW_HEIGHT + 2
+
 
 def shown_path(path):
     """画面に出すパス。リポジトリのルートからの相対で短くする。"""
     return path.relative_to(REPO_ROOT).as_posix()
 
 
-st.set_page_config(page_title="Anatomia", layout="wide")
+def table_height(row_count):
+    """表の高さ。上限までは "content"(全行がちょうど入る高さ)、超えたら上限の行数ぶんの高さに固定する。"""
+    if row_count <= MAX_ROWS_WITHOUT_SCROLL:
+        return "content"
+    return HEADER_HEIGHT + MAX_ROWS_WITHOUT_SCROLL * ROW_HEIGHT + 2  # 2 は上下の枠線(1px ずつ)
 
-# ---- 1. ダミーの表示(最上部) ----
+
+def remember_orientation_choice():
+    """利用者が表の向きを自分で切り替えたことを覚える(下の「表の向き」の注)。"""
+    st.session_state["表の向きを選んだ"] = True
+
+
+# 1.67.0 の set_page_config は、どこで何回呼んでもよい(docstring)。ページ全体の設定なので最初に置く
+st.set_page_config(page_title="Anatomia", layout="wide", initial_sidebar_state="expanded")
+
+# ---- 1. ダミーの表示(本文の最上部。1 行) ----
 if USE_DUMMY:
-    st.warning(
-        f"**ダミーデータを表示しています。** 会社・モデル・値はすべて架空で、実在しません"
-        f"（読んでいる場所：`{shown_path(DATA_DIR)}`）。"
-    )
+    st.warning("**ダミーデータを表示しています**（会社・モデル・値はすべて架空で、実在しません）")
 
-st.title("Anatomia — モデル × ベンチマーク")
+# ---- 2. サイドバー：タイトルと、有効性の限界(常に出す。折りたたまない) ----
+st.sidebar.title("Anatomia")
+st.sidebar.caption("各社が公表したベンチマークの値を、モデル × ベンチマークの表で比べる")
+st.sidebar.info("**この画面の値について**\n\n" + "\n".join(f"- {text}" for text in LIMITS))
 
-# ---- 2. 有効性の限界(常に出す) ----
-st.info("**この画面の値について**\n\n" + "\n".join(f"- {text}" for text in LIMITS))
-
-# ---- 3. 正式データを読む。読めないときは、ここで止める ----
+# ---- 3. 正式データを読む。読めないときは、本文に理由を出して止める ----
 try:
     records = load_official(DATA_DIR)
 except (FileNotFoundError, NotADirectoryError):
@@ -106,71 +138,93 @@ if not records:
     st.warning(f"正式データがまだありません（`{shown_path(DATA_DIR)}` にスコアが 0 件）。")
     st.stop()
 
-st.caption(f"`{shown_path(DATA_DIR)}` から {len(records)} 件のスコアを読みました。")
+st.sidebar.caption(f"`{shown_path(DATA_DIR)}` から {len(records)} 件のスコアを読みました。")
 
-# ---- 4. 企業で絞り込む ----
+# ---- 4. サイドバー：企業の絞り込み ----
 all_companies = companies(records)
-selected = st.multiselect("企業で絞り込む", options=all_companies, default=all_companies, key="企業")
+selected = st.sidebar.multiselect("企業で絞り込む", options=all_companies, default=all_companies, key="企業")
 if not selected:
     st.info("企業を 1 つ以上選ぶと、表が出ます。")
     st.stop()
 shown = filter_by_company(records, selected)
+grid = build_grid(shown)
 
-# ---- 5. 企業ごとの最終取得日(常に出す) ----
-# 全体の最新日だけだと、古い企業まで新しく見えるので、企業ごとに出す
-st.markdown("**最終取得日**（企業ごと）")
-st.dataframe(
+# ---- 5. サイドバー：表の向き ----
+# 既定は、絞り込み後のデータで「列の数が少なくなるほう」(grid.prefers_transposed)。
+# 利用者が一度でも切り替えたら、その選択を保つ。そのために session_state に 2 つだけ持つ:
+# - "表の向き"：切り替えの部品の値(key)。自分で選ぶまでは、毎回データから決めた既定を入れ直す
+# - "表の向きを選んだ"：利用者が切り替えたか(on_change で立てる)
+if not st.session_state.get("表の向きを選んだ"):
+    st.session_state["表の向き"] = BENCHMARKS_AS_ROWS if prefers_transposed(grid) else MODELS_AS_ROWS
+orientation = st.sidebar.radio(
+    "表の向き", [MODELS_AS_ROWS, BENCHMARKS_AS_ROWS], key="表の向き", on_change=remember_orientation_choice
+)
+transposed = orientation == BENCHMARKS_AS_ROWS
+
+# ---- 6. サイドバー：企業ごとの最終取得日(常に出す。折りたたまない) ----
+# 全体の最新日だけだと、古い企業まで新しく見えるので、企業ごとに出す。企業名はデータなので表(st.dataframe)で出す
+st.sidebar.markdown("**最終取得日**（企業ごと）")
+st.sidebar.dataframe(
     [{"企業": company, "最終取得日": day} for company, day in last_retrieved_by_company(shown).items()],
     hide_index=True,
-    width="content",
+    row_height=ROW_HEIGHT,
+)
+st.sidebar.caption(
+    "「未公表」は、正式データにその組の値がないことを示します（低いスコアという意味ではありません）。"
+    "「※」は測定条件が付いた値です。条件は、セルを選ぶと詳細に出ます。"
 )
 
-# ---- 6. 「モデル × ベンチマーク」の表 ----
-grid = build_grid(shown)
-header = table_header(grid)
-if len(set(header)) != len(header):
-    # 版を名前に含める書き方と別の項目にする書き方が混ざると、別の列に同じ見出しができ得る
-    # (viewer/grid.py の BenchmarkColumn.label の注)。見出しで列を見分けられなくなるので、止める
-    duplicated = sorted({h for h in header if header.count(h) > 1})
-    st.error("表の見出しが重なっているため、表を出せません。重なった見出し：")
-    st.code("\n".join(duplicated), language=None)
+# ---- 7. 「モデル × ベンチマーク」の表 ----
+conflicts = label_conflicts(grid, transposed)
+if conflicts:
+    # 見出しが重なると、選んだ列を見出しから引けず、人も見分けられないので止める
+    # (モデルを行に：ベンチマークの版の書き方の混在。ベンチマークを行に：別の企業に同じ名前のモデル、など)
+    st.error(f"「{orientation}」の向きでは、表の見出しが重なるため、表を出せません。重なった見出し：")
+    st.code("\n".join(conflicts), language=None)
     st.stop()
 
-# 見出しの文字列から、ベンチマークの列(BenchmarkColumn)を引くための対応
-column_by_label = {column.label: column for column in grid.columns}
+if transposed:
+    header, rows = transposed_header(grid), transposed_rows(grid)
+    pinned_columns = header[:1]  # ベンチマーク名の列
+else:
+    header, rows = table_header(grid), table_rows(grid)
+    pinned_columns = header[: len(header) - len(grid.columns)]  # 提供企業・モデル・種類・推論モード
 
-st.subheader(f"モデル × ベンチマーク（{len(grid.rows)} 行）")
+# 詳細の欄は、表の上に、高さを固定して先に置く(中身は、表で選ばれたセルが分かった後に入れる)。
+# 表が縦に長くなっても、詳細が表と同じ画面に入り、セルを選んでも表の位置が動かない
+detail_area = st.container(height=DETAIL_HEIGHT, border=False)
+
 event = st.dataframe(
-    [dict(zip(header, row)) for row in table_rows(grid)],
+    [dict(zip(header, row)) for row in rows],
     hide_index=True,
+    height=table_height(len(rows)),
+    row_height=ROW_HEIGHT,
+    # 見出しの列は、横にスクロールしても左に残す。列の幅は指定しない(中身と見出しの文字に合わせて自動で決まり、
+    # 見出しも値も省略されない。1.67.0 の画面側では、自動の幅は見出しの文字の幅も測る)
+    column_config={name: st.column_config.Column(pinned=True) for name in pinned_columns},
     on_select="rerun",
     # "single-cell"：セルを 1 つ選べるようにする。
     # "single-column"：列も選べるようにすると、ブラウザでの見出しのクリックによる並べ替えが無効になる
     # (st.dataframe の docstring「When column selections are enabled, column sorting is disabled.」)。
     # 並べ替えを出さないために付けている。列を選んでも、この画面では何もしない
     selection_mode=["single-cell", "single-column"],
-    # 選んだセルは「何行目・どの列」で覚えられる。絞り込みを変えると同じ番号が別のモデルを指すので、
-    # 絞り込みごとに key を変え、絞り込みを変えたら選択を外す
-    key="表の選択:" + "|".join(sorted(selected)),
-)
-st.caption(
-    "「未公表」は、正式データにその組の値がないことを示します（低いスコアという意味ではありません）。"
-    "「※」は測定条件が付いた値です。条件は、セルを選ぶと下の詳細に出ます。"
+    # 選んだセルは「何行目・どの列」で覚えられる。絞り込みや向きを変えると、同じ番号が別のセルを指すので、
+    # 絞り込みと向きを key に入れ、どちらかを変えたら選択を外す
+    key=f"表の選択:{orientation}:" + "|".join(sorted(selected)),
 )
 
-# ---- 7. 選んだセルの詳細 ----
-st.subheader("選んだセルの詳細")
-selected_cells = event.selection.cells  # [(行の番号, 列の見出し)]。選んでいなければ空
-if not selected_cells:
-    st.caption("表のスコアのセルを 1 つ選ぶと、ここに出典 URL・取得日などの詳細が出ます。")
-else:
-    row_index, column_label = selected_cells[0]
-    column = column_by_label.get(column_label)  # 提供企業・モデルなどの列なら None
-    if column is None or not 0 <= row_index < len(grid.rows):
-        st.caption("ベンチマークの列のセルを選ぶと、詳細が出ます。")
+# ---- 8. 選んだセルの詳細(表の上の欄に入れる) ----
+with detail_area:
+    selected_cells = event.selection.cells  # [(行の番号, 列の見出し)]。選んでいなければ空
+    pair = pair_at(grid, *selected_cells[0], transposed=transposed) if selected_cells else None
+    if not selected_cells:
+        st.caption("表のスコアのセルを 1 つ選ぶと、ここに出典 URL・取得日などの詳細が出ます。")
+    elif pair is None:
+        # 提供企業・モデルなどの列や、提供企業の行を選んだとき
+        st.caption("スコアのセル（ベンチマークとモデルが交わるところ）を選ぶと、詳細が出ます。")
     else:
-        # 番号は、ここで行の値(ModelRow)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
-        row = grid.rows[row_index]
+        # 番号は、pair_at で行と列の値(ModelRow・BenchmarkColumn)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
+        row, column = pair
         items = detail_items(grid.cell_at(row, column))
         if not items:
             st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")
@@ -180,6 +234,8 @@ else:
             st.dataframe(
                 [dict(item) for item in items],
                 hide_index=True,
+                height="content",
+                row_height=ROW_HEIGHT,
                 column_config={"出典 URL": st.column_config.LinkColumn("出典 URL")},
                 placeholder="",
             )
