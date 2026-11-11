@@ -89,25 +89,41 @@ BENCHMARKS_AS_ROWS = "ベンチマークを行に"
 # 表の行の高さ・見出しの高さは、画面側でこの比で大きくなる(1.67.0 の同梱の画面側のコードで確かめた)。
 # 下の px の数は 16px のときの値で書き、px で高さを決める所(詳細の欄・行が多いときの表)だけ、この比を掛ける
 FONT_SCALE = (st.get_option("theme.baseFontSize") or 16) / 16
-# 行の高さ(16px のときの px。文字が 18px なら、画面では 28 × 18/16 ≒ 32px)。既定は 35px。
-# 文字(16px のとき 14px)の 2 倍で、文字が詰まって見えない範囲で詰め、同じ画面に入る行を増やす
-ROW_HEIGHT = 28
+# 行の高さ(16px のときの px。文字が 18px なら、画面では 27 × 18/16 ≒ 30px)。既定は 35px。
+# 文字(16px のとき 14px)の 2 倍ほどで、文字が詰まって見えない範囲で詰め、同じ画面に入る行を増やす。
+# 28 → 27 にしたのは、probe のデータ(ベンチマークを行に、23 行)で、表の下の端が 1920×1080 の画面の
+# 表示できる高さ(約 915px)を数 px 超える見積もりになったため(1px 詰めると、23 行で約 26px 縮む)
+ROW_HEIGHT = 27
 # 見出しの行の高さ(16px のときの px)。st.dataframe では変えられず、1.67.0 の画面側の既定値(2.1875rem = 35px)
 HEADER_HEIGHT = 35
-# 表の中をスクロールせずに全行を出す、行の数の上限。28px × 30 行 + 見出しで約 880px で、1920×1080 の画面の
+# 表の中をスクロールせずに全行を出す、行の数の上限。30 行 + 見出しで約 950px(文字 18px のとき)で、1920×1080 の画面の
 # 表示できる高さにおおよそ収まる。これを超えると、ページのスクロールで見出しが画面の外に出て、どの列か分からなくなる。
 # そのため、超えたときは表をこの行数の高さに固定し、表の中でスクロールする(見出しは表の上に残る)
 MAX_ROWS_WITHOUT_SCROLL = 30
-# 詳細の欄の高さ(px)。見出し＋値 2 件(測定条件違い)が入る高さ。表の上に高さを固定して置くので、
-# セルを選んでも表の位置が動かない。3 件以上のときは、この欄の中でスクロールする
-# (+8 は、文字の大きさの比で丸めたときのずれの余裕)
-DETAIL_HEIGHT = round((HEADER_HEIGHT + 2 * ROW_HEIGHT + 2) * FONT_SCALE) + 8
 
 
-# サイドバーの幅(px)。限界の 3 文・絞り込み・向き・最終取得日・凡例が、折り返しても読みやすく入る幅。
-# 1.67.0 の既定(18.75rem。文字の基準が 16px なら 300px)より少し広くとる
-SIDEBAR_WIDTH_PX = 340
+# サイドバー(メニュー)の幅(px)。限界の 3 文・絞り込み・表の向き・凡例が、ゆったり読める幅。
+# 本文の上に重ねて出すので、広くしても本文(表)の幅は減らない(水戸さんの依頼。2026-11-11)
+SIDEBAR_WIDTH_PX = 460
+# 最初はメニューを閉じておく。重ねて出す形で最初から開いていると、表の左側(見出しの列)が隠れた状態で始まるため。
+# 開く・閉じるは、Streamlit のもともとのボタン(閉じるボタンはメニューの中、開くボタンは本文の左上)
+SIDEBAR_INITIAL_STATE = "collapsed"
+# メニューの見せ方の CSS(固定の文字列。データ由来の文字は混ぜない)。1.67.0 には正規の指定が無いので、ここ 1 か所にまとめる:
+# - 本文(main[data-testid="stMain"])を、画面の幅いっぱいに置く。メニューを開くと、本文を押して狭くせず、上に重なって出る。
+#   1.67.0 の同梱の画面側のコードが、画面の幅が狭いとき(md 以下)に本文へ付けている指定
+#   (position: absolute; top/left/right/bottom: 0; height: 100dvh)を、どの幅でも付ける
+# - メニューの幅を固定し、幅を変える取っ手を隠す(ドラッグで幅を変えられないようにする)
+# 頼る名前(stMain・stSidebar・data-collapsed・stSidebarResizeHandle)は 1.67.0 の同梱コード(static/js/index.*.js)にある。
+# 版が変わって名前が変わると効かなくなるが、画面は壊れない(メニューが本文を押して狭くする、元の動きに戻るだけ)
 SIDEBAR_CSS = f"""<style>
+main[data-testid="stMain"] {{
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 100dvh;
+}}
 section[data-testid="stSidebar"][data-collapsed="false"] {{
     width: {SIDEBAR_WIDTH_PX}px !important;
     min-width: {SIDEBAR_WIDTH_PX}px !important;
@@ -156,13 +172,9 @@ def remember_orientation_choice():
 
 
 # 1.67.0 の set_page_config は、どこで何回呼んでもよい(docstring)。ページ全体の設定なので最初に置く
-st.set_page_config(page_title="Anatomia", layout="wide", initial_sidebar_state="expanded")
-# サイドバーの幅を固定し、境目のドラッグでの幅の変更を止める(操作は、もともとの開く・閉じるのボタンだけにする)。
-# 1.67.0 には、幅を固定する・リサイズを止める正規の指定が無い(set_page_config の initial_sidebar_state に
-# 幅〔px〕を渡せるが、最初の幅だけで、ドラッグは止まらない)ので、固定の文字列の CSS を 1 か所だけ入れる。
-# CSS が頼る `data-testid="stSidebar"`・`data-collapsed`・`data-testid="stSidebarResizeHandle"` は、
-# 1.67.0 の同梱の画面側のコード(static/js/index.*.js)にあることを確かめた。版が変わって名前が変わると、
-# この CSS は効かなくなるが、画面は壊れない(幅をドラッグで変えられるようになるだけ)。データ由来の文字は混ぜない
+st.set_page_config(page_title="Anatomia", layout="wide", initial_sidebar_state=SIDEBAR_INITIAL_STATE)
+# メニューを本文の上に重ね、幅を固定する(上の SIDEBAR_CSS の注。set_page_config の initial_sidebar_state に
+# 幅〔px〕を渡せるが、最初の幅だけで、ドラッグも、本文を押して狭くする動きも止まらない)
 st.html(SIDEBAR_CSS)
 
 # ---- 1. ダミーの表示(本文の最上部。1 行) ----
@@ -219,14 +231,15 @@ orientation = st.sidebar.radio(
 )
 transposed = orientation == BENCHMARKS_AS_ROWS
 
-# ---- 6. サイドバー：企業ごとの最終取得日(常に出す。折りたたまない) ----
-# 全体の最新日だけだと、古い企業まで新しく見えるので、企業ごとに出す。企業名はデータなので表(st.dataframe)で出す
-st.sidebar.markdown("**最終取得日**（企業ごと）")
-st.sidebar.dataframe(
-    [{"企業": company, "最終取得日": day} for company, day in last_retrieved_by_company(shown).items()],
-    hide_index=True,
-    row_height=ROW_HEIGHT,
-)
+# ---- 6. 本文のいちばん上：常に出す 1 行(自己申告であること・企業ごとの最終取得日) ----
+# メニューは最初は閉じていて、閉じている間は中身が見えないので、企画書 §3-4【案】の「常に表示する」もの
+# (データの最終取得日、§4-4 の限界のうち自己申告であること)を、本文に 1 行で出す。自己申告の文は §4-4 の原文のまま。
+# 最終取得日は、全体の最新日だけだと古い企業まで新しく見えるので、企業ごとに出す。
+# 企業名はデータなので、Markdown として解釈しない st.text で出す(文全体を 1 つの st.text にする)
+last_retrieved = "、".join(f"{company} {day}" for company, day in last_retrieved_by_company(shown).items())
+st.text(f"{LIMITS[0]}（限界の全文は左のメニュー）。　最終取得日（企業ごと）：{last_retrieved}")
+
+# ---- 7. サイドバー：凡例(全文) ----
 st.sidebar.caption(
     f"「{NOT_PUBLISHED_MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）。  \n"
     "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。  \n"
@@ -234,7 +247,7 @@ st.sidebar.caption(
     "値が小さいほど良いベンチマークや、測定条件が違う値（※）があるときは、いちばん良い結果とは限りません。"
 )
 
-# ---- 7. 「モデル × ベンチマーク」の表 ----
+# ---- 8. 「モデル × ベンチマーク」の表 ----
 conflicts = label_conflicts(grid, transposed)
 if conflicts:
     # 見出しが重なると、選んだ列を見出しから引けず、人も見分けられないので止める
@@ -249,10 +262,6 @@ if transposed:
 else:
     header, rows = table_header(grid), table_rows(grid, not_published=NOT_PUBLISHED_MARK)
     pinned_columns = header[: len(header) - len(grid.columns)]  # 提供企業・モデル・種類・推論モード
-
-# 詳細の欄は、表の上に、高さを固定して先に置く(中身は、表で選ばれたセルが分かった後に入れる)。
-# 表が縦に長くなっても、詳細が表と同じ画面に入り、セルを選んでも表の位置が動かない
-detail_area = st.container(height=DETAIL_HEIGHT, border=False)
 
 event = st.dataframe(
     styled_table(header, rows, grid, transposed),
@@ -273,29 +282,35 @@ event = st.dataframe(
     key=f"表の選択:{orientation}:" + "|".join(sorted(selected)),
 )
 
-# ---- 8. 選んだセルの詳細(表の上の欄に入れる) ----
-with detail_area:
-    selected_cells = event.selection.cells  # [(行の番号, 列の見出し)]。選んでいなければ空
-    pair = pair_at(grid, *selected_cells[0], transposed=transposed) if selected_cells else None
-    if not selected_cells:
-        st.caption("表のスコアのセルを 1 つ選ぶと、ここに出典 URL・取得日などの詳細が出ます。")
-    elif pair is None:
-        # 提供企業・モデルなどの列や、提供企業の行を選んだとき
-        st.caption("スコアのセル（ベンチマークとモデルが交わるところ）を選ぶと、詳細が出ます。")
+# 凡例の 1 行(全文はメニュー)。メニューが閉じていても、記号と赤い太字の意味が分かるように
+st.caption(
+    f"「{NOT_PUBLISHED_MARK}」未公表　｜　「※」測定条件つき　｜　赤い太字：そのベンチマークで公表された値のうち最大"
+    "（いちばん良い結果とは限りません。全文は左のメニュー）"
+)
+
+# ---- 9. 選んだセルの詳細(表の下) ----
+st.markdown("**選んだセルの詳細**")
+selected_cells = event.selection.cells  # [(行の番号, 列の見出し)]。選んでいなければ空
+pair = pair_at(grid, *selected_cells[0], transposed=transposed) if selected_cells else None
+if not selected_cells:
+    st.caption("表のセルを選ぶと、ここに詳細（出典 URL・取得日など）が出ます。")
+elif pair is None:
+    # 提供企業・モデルなどの列や、提供企業の行を選んだとき
+    st.caption("スコアのセル（ベンチマークとモデルが交わるところ）を選ぶと、詳細が出ます。")
+else:
+    # 番号は、pair_at で行と列の値(ModelRow・BenchmarkColumn)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
+    row, column = pair
+    items = detail_items(grid.cell_at(row, column))
+    if not items:
+        st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")
+        st.text(f"{row.label} × {column.label}")
     else:
-        # 番号は、pair_at で行と列の値(ModelRow・BenchmarkColumn)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
-        row, column = pair
-        items = detail_items(grid.cell_at(row, column))
-        if not items:
-            st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")
-            st.text(f"{row.label} × {column.label}")
-        else:
-            # 測定条件だけが違う値は、1 つのセルに複数入る。1 件を 1 行にして並べる
-            st.dataframe(
-                [dict(item) for item in items],
-                hide_index=True,
-                height="content",
-                row_height=ROW_HEIGHT,
-                column_config={"出典 URL": st.column_config.LinkColumn("出典 URL")},
-                placeholder="",
-            )
+        # 測定条件だけが違う値は、1 つのセルに複数入る。1 件を 1 行にして並べる
+        st.dataframe(
+            [dict(item) for item in items],
+            hide_index=True,
+            height="content",
+            row_height=ROW_HEIGHT,
+            column_config={"出典 URL": st.column_config.LinkColumn("出典 URL")},
+            placeholder="",
+        )

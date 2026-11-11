@@ -70,6 +70,11 @@ def cell_styles(element):
     return found
 
 
+def top_line(at):
+    """本文のいちばん上に常に出す 1 行(st.text)。"""
+    return next(t.value for t in at.text if "自己申告" in t.value)
+
+
 def markdown_texts(at):
     """Markdown として描かれる部品の文字列を、全部集める。"""
     elements = [*at.markdown, *at.info, *at.warning, *at.error, *at.caption, *at.title, *at.subheader, *at.success]
@@ -156,15 +161,17 @@ class DummyDataTest(unittest.TestCase):
             with self.subTest(limit=limit):
                 self.assertIn(limit, text)
 
-    def test_企業ごとの最終取得日がサイドバーに表で出る(self):
-        (last,) = [d.value for d in self.at.sidebar.dataframe]
-        self.assertEqual(list(last.columns), ["企業", "最終取得日"])
-        self.assertEqual(last.values.tolist(), [["ダミー社A", "2026-10-01"], ["ダミー社B", "2026-10-15"]])
+    def test_本文に_自己申告であることと企業ごとの最終取得日を_1_行で常に出す(self):
+        line = top_line(self.at)
+        self.assertIn("公表値は各社の自己申告であり、第三者が検証した値ではない", line)  # 企画書 §4-4 の原文のまま
+        self.assertIn("最終取得日（企業ごと）：ダミー社A 2026-10-01、ダミー社B 2026-10-15", line)
+        self.assertEqual(len(self.at.sidebar.dataframe), 0)
 
     def test_サイドバーの幅を固定する_CSS_は固定の文字列だけ(self):
         (html,) = self.at.html
         self.assertIn('[data-testid="stSidebarResizeHandle"]', html.proto.body)
-        self.assertIn("340px", html.proto.body)
+        self.assertIn("460px", html.proto.body)
+        self.assertIn('main[data-testid="stMain"]', html.proto.body)  # 本文を幅いっぱいにし、メニューを上に重ねる
         for name in ("ダミー社A", "Model-A1", "Bench-X"):
             self.assertNotIn(name, html.proto.body)
 
@@ -172,16 +179,27 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業"])
         self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
 
-    def test_本文は_ダミーの表示_詳細の欄_表の順(self):
-        types = [self.at.main[i].type for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
-        self.assertEqual(types[0], "warning")
-        self.assertEqual(types.index("flex_container") + 1, types.index("dataframe"))  # 詳細の欄は表のすぐ上
+    def test_本文は_ダミーの表示_常に出す_1_行_表_凡例_詳細の順(self):
+        parts = [self.at.main[i] for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
+        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "caption", "markdown", "caption"])
+        self.assertIn("ダミーデータ", parts[0].value)
+        self.assertIn("自己申告", parts[1].value)
+        self.assertIn("赤い太字", parts[3].value)  # 凡例の 1 行は表のすぐ下
+        self.assertEqual(parts[4].value, "**選んだセルの詳細**")  # 詳細は表の下
+        self.assertIn("セルを選ぶと", parts[5].value)
+        self.assertEqual(len(self.at.expander), 0)
+
+    def test_メニューは最初は閉じる設定(self):
+        # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
+        source = APP.read_text(encoding="utf-8")
+        self.assertIn('SIDEBAR_INITIAL_STATE = "collapsed"', source)
+        self.assertIn("initial_sidebar_state=SIDEBAR_INITIAL_STATE", source)
 
     def test_見出しの列は左に固定し_行の高さを詰める(self):
         (element,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
         config = json.loads(element.proto.columns)
         self.assertEqual(sorted(k for k, v in config.items() if v.get("pinned")), sorted(["提供企業", "モデル", "種類", "推論モード"]))
-        self.assertEqual(element.proto.row_height, 28)
+        self.assertEqual(element.proto.row_height, 27)
 
     def test_表は_6_行で_順位や平均の列が無い(self):
         table = main_table(self.at)
@@ -260,8 +278,8 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(list(table.columns), ["ベンチマーク", "Model-B1", "Model-B2 (Max)"])
         self.assertEqual(list(table["ベンチマーク"]), ["提供企業", "Bench-X", "Bench-Y", "Bench-Z"])
         self.assertEqual(table.iloc[0].tolist(), ["提供企業", "ダミー社B", "ダミー社B"])
-        (last,) = [d.value for d in self.at.sidebar.dataframe]
-        self.assertEqual(last.values.tolist(), [["ダミー社B", "2026-10-15"]])
+        self.assertIn("最終取得日（企業ごと）：ダミー社B 2026-10-15", top_line(self.at))
+        self.assertNotIn("ダミー社A", top_line(self.at))
         # 全社に戻すと、モデル 6・ベンチマーク 5 なので、モデルを行にに戻る(自分で切り替えていないため)
         self.at.multiselect(key="企業").set_value(["ダミー社A", "ダミー社B"])
         rerun(self.at, "--dummy")
@@ -278,7 +296,7 @@ class DummyDataTest(unittest.TestCase):
     def test_セルを選ぶ前は詳細を出さず案内だけ出す(self):
         self.assertEqual(len(tables(self.at, "提供企業")), 1)
         self.assertEqual(self.details(), [])
-        self.assertTrue(any("セルを 1 つ選ぶと" in c.value for c in self.at.caption))
+        self.assertTrue(any("セルを選ぶと、ここに詳細" in c.value for c in self.at.caption))
         self.assertFalse(any("選んだセルは「未公表」" in i.value for i in self.at.info))
 
     def test_セルを選ぶと詳細に出典_URL_と取得日が出る(self):
@@ -339,7 +357,7 @@ class DummyDataTest(unittest.TestCase):
                 self.assertEqual(len(self.at.exception), 0)
                 self.assertEqual(len(tables(self.at, "提供企業")), 1)
                 self.assertEqual(self.details(), [])
-                self.assertEqual(len(self.at.text), 0)  # 未公表のときに出す「モデル × ベンチマーク」も出ない
+                self.assertEqual(len(self.at.text), 1)  # 常に出す 1 行だけ。未公表のときに出す「モデル × ベンチマーク」は出ない
                 self.assertFalse(any("選んだセルは「未公表」" in i.value for i in self.at.info))
 
     def test_絞り込みを変えると選んでいたセルの詳細は消える(self):
@@ -352,7 +370,7 @@ class DummyDataTest(unittest.TestCase):
         (table,) = tables(self.at, "ベンチマーク")  # 絞った後の既定の向き
         self.assertEqual(table.iloc[0].tolist()[1:], ["ダミー社B", "ダミー社B"])
         self.assertEqual(self.details(), [])
-        self.assertTrue(any("セルを 1 つ選ぶと" in c.value for c in self.at.caption))
+        self.assertTrue(any("セルを選ぶと、ここに詳細" in c.value for c in self.at.caption))
 
     # ---- 表の向き ----
     def transpose(self):
@@ -512,8 +530,7 @@ class OfficialDataTest(OfficialDirMixin, unittest.TestCase):
         self.assertEqual(set(list(table.columns)[4:]), {bench, "Bench-Z"})
         self.assertEqual(set(table["モデル"]), {model, model2})
         self.assertEqual(set(table["提供企業"]), {provider})
-        (last,) = tables(at, "企業")
-        self.assertEqual(last.values.tolist()[0][0], provider)
+        self.assertIn(f"最終取得日（企業ごと）：{provider} ", top_line(at))  # st.text(Markdown として解釈しない)
         # 未公表のセルを選んだときの名前も、Markdown ではなく st.text で出る
         select_cell(at, row_index_of(table, model, "（なし）", "（なし）"), "Bench-Z")
         self.assertEqual(len(at.exception), 0)
