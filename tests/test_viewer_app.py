@@ -31,6 +31,7 @@ TIMEOUT = 60
 SKIP_REASON = "streamlit が入っていない(画面のテストは skip)"
 MARK = "—"  # 未公表のセルに出す記号(viewer/app.py の NOT_PUBLISHED_MARK)
 GREY = "#9aa0a6"  # 未公表の記号の文字色(viewer/app.py の NOT_PUBLISHED_COLOR)
+RED = "color: #e5484d; font-weight: bold"  # 最大の値の文字(viewer/app.py の HIGHEST_STYLE)
 
 
 def rerun(at, *args):
@@ -212,10 +213,38 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(len(marked), 19)
         self.assertEqual(cell_styles(main_element(self.at))[f"color: {GREY}"], marked)
 
-    def test_凡例は_未公表の記号と_印の説明をサイドバーに常に出す(self):
+    def test_凡例は_未公表の記号と_印と_赤い文字の説明をサイドバーに常に出す(self):
         text = "\n".join(c.value for c in self.at.sidebar.caption)
         self.assertIn(f"「{MARK}」：未公表", text)
         self.assertIn("「※」：測定条件", text)
+        self.assertIn("赤い太字：そのベンチマークで、公表された値のうち最大のもの", text)
+        for word in ("最良", "1 位", "最も強い"):
+            self.assertNotIn(word, text)
+
+    def red_cells(self, first_column):
+        (table,) = tables(self.at, first_column)
+        cells = cell_styles(main_element(self.at)).get(RED, set())
+        return table, {(table.iat[r, 0] if first_column == "ベンチマーク" else table.iat[r, 1], table.columns[c]) for r, c in cells}, cells
+
+    def test_ベンチマークごとの最大の値だけ赤い太字(self):
+        table, _, cells = self.red_cells("提供企業")
+        expected = {
+            (row_index_of(table, "Model-A1", "Reasoning", "High"), list(table.columns).index("Bench-X")),
+            (row_index_of(table, "Model-B2", "（なし）", "Max"), list(table.columns).index("Bench-Y")),
+            (row_index_of(table, "Model-B1", "（なし）", "（なし）"), list(table.columns).index("Bench-Z")),
+        }
+        self.assertEqual(cells, expected)
+        # 公表が 1 つだけの列(Bench-V 2.1・Bench-W)と、未公表のセルは赤くしない
+        self.assertFalse(any(table.columns[c] in ("Bench-V 2.1", "Bench-W") for _, c in cells))
+        self.assertFalse(any(table.iat[r, c] == MARK for r, c in cells))
+
+    def test_向きを入れ替えても同じセルが赤い太字(self):
+        self.transpose()
+        table, _, cells = self.red_cells("ベンチマーク")
+        named = {(table.iat[r, 0], table.columns[c]) for r, c in cells}
+        self.assertEqual(named, {
+            ("Bench-X", "Model-A1 (Reasoning / High)"), ("Bench-Y", "Model-B2 (Max)"), ("Bench-Z", "Model-B1"),
+        })
 
     def test_測定条件だけが違う値は_1_つのセルに並び_印が付く(self):
         table = main_table(self.at)

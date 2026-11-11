@@ -11,6 +11,7 @@ from viewer.grid import (
     detail_items,
     filter_by_company,
     format_score,
+    highest_cells,
     PROVIDER_ROW,
     TRANSPOSED_FIRST_COLUMN,
     label_conflicts,
@@ -372,6 +373,61 @@ class TransposeTest(unittest.TestCase):
         same = build_grid([r, replace(r, model="Model-Z", benchmark="Bench-Q")])  # 2 と 2
         self.assertEqual((len(same.rows), len(same.columns)), (2, 2))
         self.assertFalse(prefers_transposed(same))
+
+
+class HighestTest(unittest.TestCase):
+    """ベンチマークごとに、公表された値のうち最大のセル(画面で赤い太字にするもの)。"""
+
+    def setUp(self):
+        self.records = load_official(FIXTURES)
+        self.grid = build_grid(self.records)
+        self.base = self.records[0]
+
+    def pairs(self, grid, cells):
+        return {(row.model, row.model_type, row.mode, column.label) for row, column in cells}
+
+    def test_ダミーでは_値が_2_つ以上ある列の最大だけ(self):
+        # Bench-X(% の 5 つ)・Bench-Y(Elo の 2 つ)・Bench-Z(単位なしの 2 つ)。
+        # Bench-V 2.1・Bench-W は、値を公表したモデルが 1 つだけなので付けない
+        self.assertEqual(
+            self.pairs(self.grid, highest_cells(self.grid)),
+            {("Model-A1", "Reasoning", "High", "Bench-X"), ("Model-B2", None, "Max", "Bench-Y"), ("Model-B1", None, None, "Bench-Z")},
+        )
+
+    def test_公表が_1_つだけの列は付けない(self):
+        g = build_grid([self.base, replace(self.base, model="Model-Z", benchmark="Bench-Q")])
+        self.assertEqual(highest_cells(g), set())
+
+    def test_同じ値で並んだら全部に付ける(self):
+        r = replace(self.base, score=70.0)
+        g = build_grid([r, replace(r, model="Model-Y"), replace(r, model="Model-Z", score=60.0)])
+        self.assertEqual({row.model for row, _ in highest_cells(g)}, {r.model, "Model-Y"})
+
+    def test_単位が混ざる列は比べない(self):
+        g = build_grid([replace(self.base, score=70.0, unit="%"), replace(self.base, model="Model-Y", score=1500, unit="Elo")])
+        self.assertEqual(highest_cells(g), set())
+
+    def test_値が複数のセルは_セルの中の最大で比べる(self):
+        a1 = replace(self.base, model="Model-P", score=50.0, condition="Pass@1")
+        a2 = replace(self.base, model="Model-P", score=90.0, condition="Pass@5")
+        b = replace(self.base, model="Model-Q", score=80.0, condition=None)
+        g = build_grid([a1, a2, b])
+        self.assertEqual({row.model for row, _ in highest_cells(g)}, {"Model-P"})
+
+    def test_未公表のセルは関係しない(self):
+        g = self.grid
+        for row, column in highest_cells(g):
+            self.assertTrue(g.cell_at(row, column).is_published)
+
+    def test_向きを入れ替えても_同じ組のセルを指す(self):
+        g = self.grid
+        normal = {cell_position(g, row, column) for row, column in highest_cells(g)}
+        transposed = {cell_position(g, row, column, transposed=True) for row, column in highest_cells(g)}
+        header_n, header_t = table_header(g), transposed_header(g)
+        self.assertEqual(
+            {pair_at(g, r, header_n[c]) for r, c in normal},
+            {pair_at(g, r, header_t[c], transposed=True) for r, c in transposed},
+        )
 
 
 if __name__ == "__main__":

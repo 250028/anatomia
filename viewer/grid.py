@@ -244,6 +244,34 @@ def cell_position(grid, row, column, transposed=False):
     return i, len(table_header(grid)) - len(grid.columns) + j
 
 
+# ---- ベンチマークごとの最大の値(画面で赤い文字にするセル) ----
+# 企画書 §2-4 原則 1「同じベンチマークを公表したモデル同士の相対比較で示す」に沿う目印。順位・総合スコアではない。
+# 誤解を生まないための歯止め:
+# - 比べるのは同じ列(ベンチマーク名＋版)の中だけ。単位が混ざる列(% と Elo など)は比べず、目印を付けない
+# - その列で値のあるモデルが MIN_MODELS_FOR_HIGHEST 以上のときだけ付ける(1 つしか無い値を「最大」として目立たせない)
+# - 1 つのセルに測定条件の違う値が並ぶときは、セルの中の最大の値で比べ、セル全体に付ける
+# - 測定条件の付いた値(※)も比べる対象に含める(※ はそのまま出し、比べてよいかは利用者が判断する。§2-4 原則 3)
+# - 値が小さいほど良いベンチマークかどうかは、データからは分からない(向きのキーが無く、決め方は未決)。
+#   機械的に「数値が最大」を選ぶだけで、「最良」「1 位」の意味は持たせない
+MIN_MODELS_FOR_HIGHEST = 2
+
+
+def highest_cells(grid):
+    """ベンチマークの列ごとに、値が最大のセルの (`ModelRow`, `BenchmarkColumn`) の集合を返す。
+    同じ値で並んだときは、並んだ全部。未公表のセルは関係しない。条件は上の注のとおり。"""
+    found = set()
+    for column in grid.columns:
+        cells = [(row, grid.cell_at(row, column)) for row in grid.rows]
+        published = [(row, cell) for row, cell in cells if cell.is_published]
+        units = {r.unit for _, cell in published for r in cell.records}
+        if len(published) < MIN_MODELS_FOR_HIGHEST or len(units) != 1:
+            continue
+        best = {row: max(r.score for r in cell.records) for row, cell in published}
+        top = max(best.values())
+        found |= {(row, column) for row, value in best.items() if value == top}
+    return found
+
+
 def prefers_transposed(grid):
     """既定の向き。ベンチマークの数がモデルの数より多ければ、ベンチマークを行にする(多いほうを行に回し、列を減らす)。
     同数か、モデルのほうが多ければ、モデルを行に(これまでの向き)。"""
