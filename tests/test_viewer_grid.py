@@ -10,9 +10,16 @@ from viewer.grid import (
     detail_items,
     filter_by_company,
     format_score,
+    PROVIDER_ROW,
+    TRANSPOSED_FIRST_COLUMN,
+    label_conflicts,
     last_retrieved_by_company,
+    pair_at,
+    prefers_transposed,
     table_header,
     table_rows,
+    transposed_header,
+    transposed_rows,
 )
 
 from viewer.records import load_official
@@ -242,6 +249,105 @@ class FormatScoreTest(unittest.TestCase):
         r = load_official(FIXTURES)[0]
         self.assertEqual(format_score(replace(r, score=65.0, unit="%")), "65%")
         self.assertEqual(format_score(replace(r, score=0.5, unit=None)), "0.5")
+
+
+class TransposeTest(unittest.TestCase):
+    """ベンチマークを行にした向き(transposed_header・transposed_rows・pair_at)。"""
+
+    def setUp(self):
+        self.records = load_official(FIXTURES)
+        self.grid = build_grid(self.records)
+
+    def test_見出しは_ベンチマークの列とモデルの数だけの列(self):
+        g = self.grid
+        header = transposed_header(g)
+        self.assertEqual(header[0], TRANSPOSED_FIRST_COLUMN)
+        self.assertEqual(header[1:], [row.label for row in g.rows])
+        self.assertEqual(len(header), 1 + len(g.rows))
+
+    def test_行は_提供企業の行とベンチマークの数だけの行(self):
+        g = self.grid
+        rows = transposed_rows(g)
+        self.assertEqual(len(rows), 1 + len(g.columns))
+        self.assertEqual(rows[0], [PROVIDER_ROW] + [row.provider for row in g.rows])
+        self.assertEqual([r[0] for r in rows[1:]], [c.label for c in g.columns])
+        self.assertTrue(all(len(r) == len(transposed_header(g)) for r in rows))
+
+    def test_入れ替えても_同じモデルとベンチマークの組のセルは同じ中身(self):
+        # もう一度入れ替えると元の表のスコアの部分に戻る、に当たる確認
+        g = self.grid
+        normal = table_rows(g)
+        transposed = transposed_rows(g)
+        fixed = len(table_header(g)) - len(g.columns)
+        for i in range(len(g.rows)):
+            for j in range(len(g.columns)):
+                with self.subTest(row=g.rows[i].label, column=g.columns[j].label):
+                    self.assertEqual(transposed[1 + j][1 + i], normal[i][fixed + j])
+                    self.assertEqual(transposed[1 + j][1 + i], g.cell(i, j).text)
+        back = [[transposed[1 + j][1 + i] for j in range(len(g.columns))] for i in range(len(g.rows))]
+        self.assertEqual(back, [r[fixed:] for r in normal])
+
+    def test_入れ替えても_未公表と印の数は変わらない(self):
+        g = self.grid
+        normal = [c for r in table_rows(g) for c in r[4:]]
+        transposed = [c for r in transposed_rows(g)[1:] for c in r[1:]]
+        self.assertEqual(len(normal), len(transposed))
+        self.assertEqual(normal.count(NOT_PUBLISHED), transposed.count(NOT_PUBLISHED))
+        self.assertEqual(sum(CONDITION_MARK in c for c in normal), sum(CONDITION_MARK in c for c in transposed))
+        self.assertGreater(normal.count(NOT_PUBLISHED), 0)
+
+    def test_名指しのセル_未公表と印付き(self):
+        g = self.grid
+        rows = transposed_rows(g)
+        i = find_row(g, "Model-A1", "Reasoning", "High")
+        self.assertEqual(rows[1 + find_col(g, "Bench-W")][1 + i], "55.1% / 63.4%" + CONDITION_MARK)
+        b2 = find_row(g, "Model-B2", None, "Max")
+        self.assertEqual(rows[1 + find_col(g, "Bench-X")][1 + b2], NOT_PUBLISHED)
+
+    def test_選んだセルは_どちらの向きでも同じ組になる(self):
+        g = self.grid
+        for i, row in enumerate(g.rows):
+            for j, column in enumerate(g.columns):
+                with self.subTest(row=row.label, column=column.label):
+                    self.assertEqual(pair_at(g, i, column.label), (row, column))
+                    self.assertEqual(pair_at(g, 1 + j, row.label, transposed=True), (row, column))
+
+    def test_スコアのセルでないときは_None(self):
+        g = self.grid
+        self.assertIsNone(pair_at(g, 0, "モデル"))
+        self.assertIsNone(pair_at(g, len(g.rows), g.columns[0].label))
+        self.assertIsNone(pair_at(g, -1, g.columns[0].label))
+        self.assertIsNone(pair_at(g, 0, "存在しない列"))
+        label = g.rows[0].label
+        self.assertIsNone(pair_at(g, 0, label, transposed=True))  # 提供企業の行
+        self.assertIsNone(pair_at(g, 1, TRANSPOSED_FIRST_COLUMN, transposed=True))
+        self.assertIsNone(pair_at(g, 1 + len(g.columns), label, transposed=True))
+        self.assertIsNone(pair_at(g, 1, "存在しない列", transposed=True))
+
+    def test_ダミーでは見出しは重ならない(self):
+        self.assertEqual(label_conflicts(self.grid), [])
+        self.assertEqual(label_conflicts(self.grid, transposed=True), [])
+
+    def test_別の企業に同じ名前のモデルがあると_入れ替えた向きだけ重なる(self):
+        r = self.records[0]
+        g = build_grid([r, replace(r, provider="ダミー社Z")])
+        self.assertEqual(label_conflicts(g), [])
+        self.assertEqual(label_conflicts(g, transposed=True), [g.rows[0].label])
+
+    def test_版の書き方が混ざると_どちらの向きでも重なる(self):
+        r = self.records[0]
+        g = build_grid([replace(r, benchmark="Bench A 2.1"), replace(r, benchmark="Bench A", benchmark_version="2.1")])
+        self.assertEqual(label_conflicts(g), ["Bench A 2.1"])
+        self.assertEqual(label_conflicts(g, transposed=True), ["Bench A 2.1"])
+
+    def test_既定の向きは_ベンチマークのほうが多いときだけ入れ替える(self):
+        self.assertFalse(prefers_transposed(self.grid))  # モデル 6・ベンチマーク 5
+        only_b = build_grid(filter_by_company(self.records, ["ダミー社B"]))  # モデル 2・ベンチマーク 3
+        self.assertTrue(prefers_transposed(only_b))
+        r = self.records[0]
+        same = build_grid([r, replace(r, model="Model-Z", benchmark="Bench-Q")])  # 2 と 2
+        self.assertEqual((len(same.rows), len(same.columns)), (2, 2))
+        self.assertFalse(prefers_transposed(same))
 
 
 if __name__ == "__main__":

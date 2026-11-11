@@ -168,6 +168,72 @@ def table_rows(grid):
     ]
 
 
+# ---- 表の向きの入れ替え(ベンチマークを行に、モデルを列に) ----
+# 行は 1 行あたり数十 px で済むが、列は 1 列あたり百 px 前後要る。多いほうの軸を行に回すと、同じ画面に入る量が増える。
+# 入れ替えても、セルの中身(`Cell.text`。値・未公表・※)は、`table_rows` と同じモデル×ベンチマークの組のまま
+
+TRANSPOSED_FIRST_COLUMN = "ベンチマーク"
+# 入れ替えた表の 1 行目。モデルの列の見出し(`ModelRow.label`)には提供企業が入らないので、この行で示す
+# (見出しに企業名まで入れると、列が広がって横に収まりにくくなるため)
+PROVIDER_ROW = "提供企業"
+
+
+def transposed_header(grid):
+    """ベンチマークを行にした表の見出し。1 列目はベンチマーク名の列、2 列目からはモデル(`ModelRow.label`)。"""
+    return [TRANSPOSED_FIRST_COLUMN] + [row.label for row in grid.rows]
+
+
+def transposed_rows(grid):
+    """ベンチマークを行にした表の行。1 行目は提供企業の行、2 行目からは 1 行が 1 つのベンチマーク。
+    j 行目(提供企業の行を除いて数える)の i 列目(1 列目を除いて数える)は、`table_rows(grid)[i]` の
+    ベンチマークの列の j 番目と同じセル。"""
+    provider_row = [PROVIDER_ROW] + [row.provider for row in grid.rows]
+    return [provider_row] + [
+        [column.label] + [grid.cell(i, j).text for i in range(len(grid.rows))]
+        for j, column in enumerate(grid.columns)
+    ]
+
+
+def _duplicated(labels):
+    labels = list(labels)
+    return {label for label in labels if labels.count(label) > 1}
+
+
+def label_conflicts(grid, transposed=False):
+    """その向きの表で、同じ文字列になってしまう見出し(列の見出しと、行の見出し)を名前順で返す。空なら表を出せる。
+    重なると、画面で選んだ列を見出しの文字列から引けず、人も見分けられないので、画面は表を出さずに止める。
+    - モデルを行に：列の見出し(`table_header`。ベンチマークの版の書き方が混ざると重なり得る。`BenchmarkColumn.label` の注)
+    - ベンチマークを行に：列の見出し(`transposed_header`。別の企業に同じ名前・種類・推論モードのモデルがあると重なる)と、
+      行の見出し(提供企業の行とベンチマーク名)"""
+    if not transposed:
+        return sorted(_duplicated(table_header(grid)))
+    row_labels = [PROVIDER_ROW] + [column.label for column in grid.columns]
+    return sorted(_duplicated(transposed_header(grid)) | _duplicated(row_labels))
+
+
+def pair_at(grid, row_index, column_label, transposed=False):
+    """表で選んだセル(行の番号、列の見出し)を、(`ModelRow`, `BenchmarkColumn`) の組にする。
+    スコアのセルでないとき(提供企業・モデルなどの列、提供企業の行、範囲外の番号、知らない見出し)は None。
+    `label_conflicts(grid, transposed)` が空であることが前提(見出しが重なっていると、どの列か決められない)。
+    返した組で `grid.cell_at(row, column)` を引けば、どちらの向きでも同じセルになる。"""
+    if transposed:
+        row = {r.label: r for r in grid.rows}.get(column_label)
+        column_index = row_index - 1  # 1 行目は提供企業の行
+        if row is None or not 0 <= column_index < len(grid.columns):
+            return None
+        return row, grid.columns[column_index]
+    column = {c.label: c for c in grid.columns}.get(column_label)
+    if column is None or not 0 <= row_index < len(grid.rows):
+        return None
+    return grid.rows[row_index], column
+
+
+def prefers_transposed(grid):
+    """既定の向き。ベンチマークの数がモデルの数より多ければ、ベンチマークを行にする(多いほうを行に回し、列を減らす)。
+    同数か、モデルのほうが多ければ、モデルを行に(これまでの向き)。"""
+    return len(grid.columns) > len(grid.rows)
+
+
 def detail_items(cell):
     """選んだセルの詳細。セルの値ごと(測定条件違いなら複数)に、「(項目名, 表示する文字列)」の
     リストを作り、それを並べたリストを返す。未公表のセルは空のリスト。出典 URL はそのまま入るので、app.py でリンクにする。
