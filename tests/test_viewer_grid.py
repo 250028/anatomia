@@ -186,7 +186,7 @@ class DetailTest(unittest.TestCase):
         self.assertEqual(d["出典 URL"], "https://example.com/dummy-a/modelcard")
         self.assertEqual(d["取得日"], "2026-10-01")
         self.assertEqual(d["取得者"], "ダミー")
-        self.assertEqual(d["取得方法"], "ダミー")
+        self.assertEqual(d["取得方法"], "スクリプト")
         self.assertEqual(d["測定条件"], "Pass@1")
         self.assertEqual(dict(details[1])["測定条件"], "Pass@5")
         self.assertNotIn("sha", d)

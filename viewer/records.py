@@ -1,8 +1,8 @@
 """正式データ(`data/official/<会社>.json`)の 1 件のスコアの型と、ファイルからの読み込み。
 
-画面のコードは、ここが返す `ScoreRecord` だけを見る。正式データの形は PR #33 の
-企画書 §3-3【案】のキーの表が正で、ここは「そのコードでの写し」にすぎない。
-#33 が変わったときに直すのは、このファイルの「境界」(`record_from_dict`・`records_in_file`)だけにする。
+画面のコードは、ここが返す `ScoreRecord` だけを見る。正式データの形は企画書 §3-3
+(「正式データの形式と置き場所」と、キーの表)が正で、ここは「そのコードでの写し」にすぎない。
+§3-3 が変わったときに直すのは、このファイルの「境界」(`record_from_dict`・`records_in_file`)だけにする。
 ロジック層なので `streamlit`・`requests`・`pandas` は import しない(tests/test_viewer_records.py で確かめる)。
 """
 
@@ -25,7 +25,7 @@ class RecordError(ValueError):
 
 @dataclass(frozen=True)
 class ScoreRecord:
-    """1 件のスコア。フィールド名は #33 のキー名にそろえる(意味は企画書 §3-3 を参照)。"""
+    """1 件のスコア。フィールド名は企画書 §3-3 のキー名にそろえる(意味は §3-3 を参照)。"""
 
     provider: str
     model: str
@@ -35,7 +35,7 @@ class ScoreRecord:
     source_url: str
     retrieved_at: str  # YYYY-MM-DD
     retrieved_by: str
-    retrieval_method: str  # 値の検査は #33 の決定待ち(下の `_METHOD_LABELS` のコメントも参照)
+    retrieval_method: str  # `script` か `manual`(企画書 §3-3。検査は `record_from_dict`)
     mode: str | None = None
     model_type: str | None = None
     benchmark_version: str | None = None
@@ -45,8 +45,28 @@ class ScoreRecord:
     as_of: str | None = None  # 画面では使わない
 
 
-# 取得方法の表示名。#33 は `script`/`manual`、#28 は「手入力」と書き、表記が未確定。
-# 知らない値(ダミーの「ダミー」など)は、そのまま出す
+# 企画書 §3-3 の表のキー(16 個)。正式データのレコードは、これを常に全部置き、これ以外のキーは入れない
+OFFICIAL_KEYS = (
+    "model",
+    "provider",
+    "model_type",
+    "mode",
+    "benchmark",
+    "benchmark_version",
+    "score",
+    "unit",
+    "condition",
+    "raw_value",
+    "source_url",
+    "retrieved_at",
+    "retrieved_by",
+    "retrieval_method",
+    "sha",
+    "as_of",
+)
+
+# `retrieval_method` の値(§3-3 の表「必須(`script` か `manual`)」)と、その表示名
+RETRIEVAL_METHODS = ("script", "manual")
 _METHOD_LABELS = {"script": "スクリプト", "manual": "手入力"}
 
 
@@ -76,9 +96,22 @@ def _required_str(raw, key):
     return value.strip()
 
 
+def _check_date(value, key):
+    """YYYY-MM-DD の実在する日付か(§3-3「日付(`retrieved_at`・`as_of`)は `YYYY-MM-DD`」)。"""
+    # date.fromisoformat は 3.11 以降 `20261020` や `2026-W43-2` も通すので、形も確かめる
+    # (`\d` は全角数字にも合うので `[0-9]` を使う)
+    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", value):
+        raise ValueError(f"`{key}` が YYYY-MM-DD の日付でない: {value}")
+    try:
+        date.fromisoformat(value)
+    except ValueError:
+        raise ValueError(f"`{key}` が YYYY-MM-DD の日付でない: {value}") from None
+
+
 def _optional_str(raw, key):
-    """任意のキー。#33 で未確定(「なければ省く」と「なければ null」が混在)なので、
-    キーが無いのも null も空文字も None として受け付ける。"""
+    """任意のキー。§3-3 は「表のキーは常に置き、値がないときは null」なので、キーが無いことは
+    呼び出し元(`record_from_dict`)が先に弾く。ここでは null も空文字も None として受け付ける
+    (空文字の扱いは §3-3 に書いておらず、緩いまま)。"""
     value = raw.get(key)
     if value is None:
         return None
@@ -90,26 +123,32 @@ def _optional_str(raw, key):
 def record_from_dict(raw, file_provider=None):
     """JSON の 1 件(dict)を `ScoreRecord` にする。形が読めなければ ValueError(理由の 1 文)。
 
-    ここが「JSON の形」と「画面が見る型」の境界。#33 で未確定の点は、すべてここで吸収する
-    (決まったらここを直す):
-    - `provider`: レコードのキーとファイル名(`file_provider`)の両方を受け付ける。
-      どちらか片方だけでもよい。両方あって食い違うときは、どちらが正か分からないので誤りにする
-    - `unit`: キーが無い・null・空文字は「単位なし」(None)
-    - `raw_value`・`as_of`: 意味の表に行が無い。必須か分からないので、無くても読む
-    - `retrieval_method`: `script`/`manual` に限らず、空でない文字列なら受け付ける(値の検査は #33 の決定待ち)
-    出典(`source_url`・`retrieved_at`・`retrieved_by`)は、#33 でも必須で、禁則 5 の根拠なので、必ず検査する
-    (`source_url` は http(s) の URL、`retrieved_at` は厳密に YYYY-MM-DD)。`score` は nan・inf・大きすぎる整数も誤り。
+    ここが「JSON の形」と「画面が見る型」の境界。企画書 §3-3 の決定どおりに検査する:
+    - 表のキー(`OFFICIAL_KEYS` の 16 個)を常に置く。キーが足りないのも、表にないキーがあるのも誤り
+      (「表のキーは常に置き、値がないときは `null`」「正式データに入れるのは、下の表のキーだけ」)
+    - 必須(`model`・`provider`・`benchmark`・`score`・`raw_value`・`source_url`・`retrieved_at`・
+      `retrieved_by`・`retrieval_method`)は、null や空文字も誤り。任意のキーは null でよい
+    - `provider` はレコードの値が正(「レコードの `provider` を正とし、ファイル名は入れ物の名前」)。
+      `file_provider`(ファイル名)と食い違うときは、どちらが正か人が確かめるべきなので誤りにする
+    - `retrieval_method` は `script` か `manual`
+    - 日付(`retrieved_at`・`as_of`)は `YYYY-MM-DD`。`as_of` は null でもよい
+    - `unit`: 単位がなければ null(キーは置く)
+    出典(`source_url`・`retrieved_at`・`retrieved_by`)は、禁則 5 の根拠なので、必ず検査する
+    (`source_url` は http(s) の URL)。`score` は nan・inf・大きすぎる整数も誤り。
     """
     if not isinstance(raw, dict):
         raise ValueError("オブジェクトでない")
 
-    provider = _optional_str(raw, "provider")
-    if provider is None:
-        provider = file_provider
-    elif file_provider is not None and provider != file_provider:
+    missing = [k for k in OFFICIAL_KEYS if k not in raw]
+    if missing:
+        raise ValueError("表のキーが足りない(値がなければ null を置く): " + "・".join(f"`{k}`" for k in missing))
+    extra = [k for k in raw if k not in OFFICIAL_KEYS]
+    if extra:
+        raise ValueError("表にないキーがある(正式データに入れるのは表のキーだけ): " + "・".join(f"`{k}`" for k in extra))
+
+    provider = _required_str(raw, "provider")
+    if file_provider is not None and provider != file_provider:
         raise ValueError(f"`provider`({provider})がファイル名({file_provider})と食い違う")
-    if not provider:
-        raise ValueError("`provider` がレコードにもファイル名にも無い")
 
     score = raw.get("score")
     if isinstance(score, bool) or not isinstance(score, (int, float)):
@@ -122,18 +161,19 @@ def record_from_dict(raw, file_provider=None):
         raise ValueError("必須の `score` が有限の数値でない(nan・inf・大きすぎる整数)")
 
     retrieved_at = _required_str(raw, "retrieved_at")
-    # date.fromisoformat は 3.11 以降 `20261020` や `2026-W43-2` も通すので、形も確かめる
-    # (`\d` は全角数字にも合うので `[0-9]` を使う)
-    if not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", retrieved_at):
-        raise ValueError(f"`retrieved_at` が YYYY-MM-DD の日付でない: {retrieved_at}")
-    try:
-        date.fromisoformat(retrieved_at)
-    except ValueError:
-        raise ValueError(f"`retrieved_at` が YYYY-MM-DD の日付でない: {retrieved_at}") from None
+    _check_date(retrieved_at, "retrieved_at")
+
+    as_of = _optional_str(raw, "as_of")
+    if as_of is not None:
+        _check_date(as_of, "as_of")
 
     source_url = _required_str(raw, "source_url")
     if not re.match(r"https?://", source_url, re.IGNORECASE):
         raise ValueError(f"`source_url` が http:// か https:// で始まらない: {source_url}")
+
+    retrieval_method = _required_str(raw, "retrieval_method")
+    if retrieval_method not in RETRIEVAL_METHODS:
+        raise ValueError(f"`retrieval_method` が script でも manual でもない: {retrieval_method}")
 
     return ScoreRecord(
         provider=provider,
@@ -144,37 +184,37 @@ def record_from_dict(raw, file_provider=None):
         source_url=source_url,
         retrieved_at=retrieved_at,
         retrieved_by=_required_str(raw, "retrieved_by"),
-        retrieval_method=_required_str(raw, "retrieval_method"),
+        retrieval_method=retrieval_method,
         mode=_optional_str(raw, "mode"),
         model_type=_optional_str(raw, "model_type"),
         benchmark_version=_optional_str(raw, "benchmark_version"),
         condition=_optional_str(raw, "condition"),
-        raw_value=_optional_str(raw, "raw_value"),
+        raw_value=_required_str(raw, "raw_value"),
         sha=_optional_str(raw, "sha"),
-        as_of=_optional_str(raw, "as_of"),
+        as_of=as_of,
     )
 
 
 def records_in_file(data):
     """1 つのファイルの JSON から、レコードの dict のリストを取り出す。
-    ファイルの外形は #33 で未確定(`{"records": [...]}` か配列か)。両方を受け付ける。決まったらここを直す。"""
-    if isinstance(data, list):
-        return data
+    ファイルの外形は `{"records": [...]}` だけ(企画書 §3-3「ファイルの外形」)。配列だけの形は誤り。"""
     if isinstance(data, dict) and isinstance(data.get("records"), list):
         return data["records"]
-    raise ValueError('`{"records": [...]}` でも配列でもない')
+    raise ValueError('`{"records": [...]}` の形でない')
 
 
 def load_official(directory):
     """`directory/*.json`(会社ごとのファイル)をすべて読み、1 つのリストにして返す。
 
-    - ファイル名(拡張子を除く)は、レコードの `provider` が無いときの代わりに使う
+    - ファイル名(拡張子を除く)は、レコードの `provider` と食い違っていないかの確認にだけ使う(正はレコードの値)
     - ディレクトリが存在しない(または、ディレクトリでない)ときは `FileNotFoundError`・`NotADirectoryError`
       (どちらも `OSError`)。パスの誤りを「データなし」に見せないため。存在して JSON が 1 つも無いときだけ空のリスト
       (「正式データがまだない」の判定は呼び出し側)
     - 読めないレコードが 1 件でもあれば、全部のファイルを見終えてから `RecordError` で止める
       (`problems` に全件の理由が入る)。読めたものだけを返すことはしない
-    - `record_key` が同じレコードが重なっているときも `RecordError`(どちらの値が正か分からないため)
+    - `record_key` が同じレコードが重なっているときも `RecordError`(どちらの値が正か分からないため)。
+      企画書 §8 Q-4(同じ値が複数あるときの扱い)が未決のあいだの暫定で、Q-4 が決まったらここを直す
+      (変換の部品 scraper/to_official.py は警告してすべて残すので、決まるまで食い違う)
     """
     directory = Path(directory)
     if not directory.exists():
