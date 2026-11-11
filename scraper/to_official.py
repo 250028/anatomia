@@ -10,6 +10,8 @@ Web にはアクセスしない(手元のファイルを読んで形を変える
 import argparse
 import csv
 import json
+import math
+import os
 import re
 import sys
 import warnings
@@ -61,6 +63,12 @@ REQUIRED_KEYS = ["model", "provider", "benchmark", "score", "raw_value", "source
 _SCORE = re.compile(r"-?\d+(?:\.\d+)?")
 _DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
 _SHA = re.compile(r"[0-9a-f]{40}")
+# 会社名は出力のファイル名になるので、ディレクトリの区切りや `..` を含められない(出力先の外に書かないため)
+_PROVIDER = re.compile(r"\w[\w ._-]*")
+
+# JSON のレコードで、文字列でなければならないキーと、文字列か null のキー(取得スクリプトの出力が想定外の形のときに止める)
+STRING_KEYS = ["model", "provider", "benchmark", "raw_value", "source_url", "retrieved_by"]
+OPTIONAL_STRING_KEYS = ["model_type", "mode", "benchmark_version", "unit", "condition", "as_of"]
 
 
 class ConversionError(ValueError):
@@ -87,8 +95,20 @@ def _check_sha(value, where, label):
         raise ConversionError(f"{where}: {label}が 40 桁の 16 進数でない: {value!r}")
 
 
+def _check_provider(value, where):
+    if not isinstance(value, str) or not _PROVIDER.fullmatch(value) or ".." in value:
+        raise ConversionError(f"{where}: provider(会社名)がファイル名にできない形: {value!r}")
+
+
 def read_manual_csv(path):
     path = Path(path)
+    try:
+        return _parse_manual_csv(path)
+    except UnicodeDecodeError as e:
+        raise ConversionError(f"{path.name}: UTF-8 で読めない({e.reason})") from None
+
+
+def _parse_manual_csv(path):
     provider = path.stem
     # BOM なしが決まりだが、Excel などで保存されて BOM が付いても読めるように utf-8-sig で読む(§3-3)
     with open(path, encoding="utf-8-sig", newline="") as f:
@@ -120,7 +140,10 @@ def read_manual_csv(path):
 
 def read_scraper_json(path):
     path = Path(path)
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as e:
+        raise ConversionError(f"{path.name}: JSON として読めない: {e}") from None
     if not isinstance(data, dict) or not isinstance(data.get("records"), list):
         raise ConversionError(f"{path.name}: {{\"records\": [...]}} の形でない")
     records = []
@@ -132,8 +155,16 @@ def read_scraper_json(path):
         for key in REQUIRED_KEYS:
             if rec.get(key) in (None, ""):
                 raise ConversionError(f"{where}: 必須のキー {key} がない")
-        if isinstance(rec["score"], bool) or not isinstance(rec["score"], (int, float)):
-            raise ConversionError(f"{where}: score が数値でない: {rec['score']!r}")
+        for key in STRING_KEYS:
+            if not isinstance(rec[key], str):
+                raise ConversionError(f"{where}: {key} が文字列でない: {rec[key]!r}")
+        _check_provider(rec["provider"], where)
+        for key in OPTIONAL_STRING_KEYS:
+            if rec.get(key) is not None and not isinstance(rec[key], str):
+                raise ConversionError(f"{where}: {key} が文字列でも null でもない: {rec[key]!r}")
+        # NaN や Infinity は、Python の json は読めるが、JSON としては不正な形で出力に入ってしまう
+        if isinstance(rec["score"], bool) or not isinstance(rec["score"], (int, float)) or not math.isfinite(rec["score"]):
+            raise ConversionError(f"{where}: score が有限の数値でない: {rec['score']!r}")
         _check_date(rec["retrieved_at"], where, "取得日(retrieved_at)")
         if rec["retrieval_method"] not in ("script", "manual"):
             raise ConversionError(f"{where}: retrieval_method が script でも manual でもない: {rec['retrieval_method']!r}")
@@ -189,19 +220,33 @@ def _warn_duplicates(name, records):
 
 def convert(sources, out_dir):
     """入力をすべて読み、会社ごとに 1 つのファイルへ書き出す。書き出したパスを返す。
-    同じ会社の入力が複数あっても、1 回でまとめて書くので、先に書いた分を消さない。どれか 1 つでも読めなければ、何も書かない。"""
+    同じ会社の入力が複数あっても、1 回でまとめて書くので、先に書いた分を消さない。
+    読み込みか出力先の確認で 1 つでも失敗したら、何も書かない。書き出しは、まず一時ファイルにすべて書いてから置き換える
+    (一時ファイルへの書き出しが途中で失敗しても、先に書いた会社のファイルは残らない。置き換えの途中の失敗までは防げない)。"""
     grouped = {}
     for src in sources:
         name, records = _read(Path(src))
         grouped.setdefault(name, []).extend(records)
+    plan = []
     for name, records in grouped.items():
+        _check_provider(name, f"{name}: 会社名")
         _warn_duplicates(name, records)
-    outs = []
-    for name, records in grouped.items():
         out = Path(out_dir) / f"{name}.json"
-        write_official(records, out)
-        outs.append(out)
-    return outs
+        if out.exists() and not out.is_file():
+            raise ConversionError(f"{out}: 出力先がファイルでない(ディレクトリなど)")
+        plan.append((out, records))
+    tmps = []
+    try:
+        for out, records in plan:
+            tmp = out.with_name(out.name + ".tmp")
+            tmps.append(tmp)
+            write_official(records, tmp)
+        for tmp, (out, _) in zip(tmps, plan):
+            os.replace(tmp, out)
+    finally:
+        for tmp in tmps:
+            tmp.unlink(missing_ok=True)
+    return [out for out, _ in plan]
 
 
 def main():
@@ -211,7 +256,7 @@ def main():
     args = ap.parse_args()
     try:
         outs = convert(args.sources, args.out_dir)
-    except ConversionError as e:
+    except (ConversionError, OSError) as e:
         sys.exit(str(e))
     for out in outs:
         print(f"→ {out}", file=sys.stderr)

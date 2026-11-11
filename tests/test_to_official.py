@@ -1,13 +1,18 @@
+import contextlib
+import io
 import json
 import tempfile
 import unittest
 import warnings
 from pathlib import Path
+from unittest import mock
 
+from scraper import to_official
 from scraper.to_official import (
     OFFICIAL_KEYS,
     ConversionError,
     convert,
+    main,
     read_manual_csv,
     read_scraper_json,
     write_official,
@@ -223,6 +228,52 @@ class ReadScraperJsonTest(TempDirTestCase):
                 self.assertEqual((r["as_of"], len(caught)), (ok, 0))
 
 
+class ReadScraperJsonTypeTest(TempDirTestCase):
+    def json(self, *records):
+        return self.write("Google.json", json.dumps({"records": list(records)}, ensure_ascii=False))
+
+    def test_score_が有限の数でなければ止まる(self):
+        for bad in [float("nan"), float("inf"), float("-inf")]:
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ConversionError, "1 件目.*score"):
+                    read_scraper_json(self.json({**SCRAPER_RECORD, "score": bad}))
+
+    def test_必須の文字列のキーが文字列でなければ止まる(self):
+        for key in ["provider", "model", "benchmark", "raw_value", "source_url", "retrieved_by"]:
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ConversionError, rf"1 件目.*{key}"):
+                    read_scraper_json(self.json({**SCRAPER_RECORD, key: ["a"]}))
+
+    def test_任意の文字列のキーは_文字列か_null_だけ(self):
+        for key in ["model_type", "mode", "benchmark_version", "unit", "condition", "as_of"]:
+            with self.subTest(key=key):
+                with self.assertRaisesRegex(ConversionError, rf"1 件目.*{key}"):
+                    read_scraper_json(self.json({**SCRAPER_RECORD, key: ["a"]}))
+
+    def test_提供企業名は_ファイル名にできる文字だけ(self):
+        for bad in ["../esc", "a/b", "a\\b", ".", "..", "a..b", " x"]:
+            with self.subTest(bad=bad):
+                with self.assertRaisesRegex(ConversionError, "1 件目.*provider"):
+                    read_scraper_json(self.json({**SCRAPER_RECORD, "provider": bad}))
+
+    def test_空白や日本語を含む会社名は通る(self):
+        for ok in ["Mistral AI", "OpenAI", "xAI", "蒲山商事"]:
+            with self.subTest(ok=ok):
+                (r,) = read_scraper_json(self.json({**SCRAPER_RECORD, "provider": ok}))
+                self.assertEqual(r["provider"], ok)
+
+    def test_JSON_として読めなければ_ConversionError(self):
+        path = self.write("Google.json", "{not json")
+        with self.assertRaisesRegex(ConversionError, "JSON として読めない"):
+            read_scraper_json(path)
+
+    def test_UTF_8_で読めなければ_ConversionError(self):
+        path = self.dir / "Google.json"
+        path.write_bytes(b"\x80\x81\x82")
+        with self.assertRaisesRegex(ConversionError, "読めない"):
+            read_scraper_json(path)
+
+
 class WriteOfficialTest(TempDirTestCase):
     def test_records_の形で_日本語をそのまま_末尾に改行を付けて書く(self):
         records = [{"model": "モデル", "score": 1.5}]
@@ -304,6 +355,60 @@ class ConvertTest(TempDirTestCase):
             warnings.simplefilter("always")
             self.convert(src)
         self.assertEqual(len(caught), 0)
+
+    def test_出力先がファイルでなければ_どの会社も書かずに止まる(self):
+        official = self.dir / "official"
+        (official / "Beta.json").mkdir(parents=True)
+        a = self.csv(ROW.format(sha=""), name="Acme.csv")
+        b = self.csv(ROW.format(sha=""), name="Beta.csv")
+        with self.assertRaisesRegex(ConversionError, "出力先"):
+            self.convert(a, b)
+        self.assertFalse((official / "Acme.json").exists())
+
+    def test_書き出しの途中で失敗したら_先に書いた分も残さない(self):
+        real = to_official.write_official
+
+        def flaky(records, path):
+            if "Beta" in Path(path).name:
+                raise OSError("disk full")
+            real(records, path)
+
+        a = self.csv(ROW.format(sha=""), name="Acme.csv")
+        b = self.csv(ROW.format(sha=""), name="Beta.csv")
+        with mock.patch.object(to_official, "write_official", side_effect=flaky):
+            with self.assertRaises(OSError):
+                self.convert(a, b)
+        self.assertEqual(list((self.dir / "official").iterdir()), [])
+
+    def test_会社名にできない_CSV_のファイル名は止まる(self):
+        src = self.csv(ROW.format(sha=""), name="(1).csv")
+        with self.assertRaisesRegex(ConversionError, "会社名"):
+            self.convert(src)
+
+    def test_CSV_が_UTF_8_で読めなければ_ConversionError(self):
+        path = self.dir / "Acme.csv"
+        path.write_bytes(b"\x80\x81\x82\n")
+        with self.assertRaisesRegex(ConversionError, "読めない"):
+            self.convert(path)
+
+
+class MainTest(TempDirTestCase):
+    def run_main(self, *args):
+        err = io.StringIO()
+        with mock.patch("sys.argv", ["to_official", *map(str, args)]), contextlib.redirect_stderr(err):
+            main()
+        return err.getvalue()
+
+    def test_入力ファイルがなければ_traceback_でなくメッセージで終わる(self):
+        missing = self.dir / "missing.csv"
+        with self.assertRaises(SystemExit) as cm:
+            self.run_main(missing, "--out-dir", self.dir / "o")
+        self.assertIn("missing.csv", str(cm.exception.code))
+
+    def test_正常なら_書き出し先を標準エラーに出す(self):
+        src = self.csv(ROW.format(sha=""), name="Acme.csv")
+        out = self.run_main(src, "--out-dir", self.dir / "o")
+        self.assertIn("Acme.json", out)
 
 
 if __name__ == "__main__":
