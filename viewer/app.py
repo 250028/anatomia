@@ -1,15 +1,17 @@
 """Anatomia の画面(MVP)。「モデル×ベンチマーク」の表を、出典つきで 1 画面に出す。
 
-動かし方(リポジトリのルートで):
-    streamlit run viewer/app.py --server.address 127.0.0.1 --browser.gatherUsageStats false
+動かし方(リポジトリのルートで。起動したら、ブラウザで http://127.0.0.1:8501 を開く):
+    streamlit run viewer/app.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false
         → 正式データ(data/official/)を読む
-    streamlit run viewer/app.py --server.address 127.0.0.1 --browser.gatherUsageStats false -- --dummy
+    streamlit run viewer/app.py --server.address 127.0.0.1 --server.headless true --browser.gatherUsageStats false -- --dummy
         → ダミーデータ(tests/fixtures/official/)を読む(`--` の後ろが、このファイルへの引数)
-    - `--server.address 127.0.0.1`：自分の PC からだけ開けるようにする。指定しないと、すべての口で待ち受けて
-      ほかの PC からも開け、起動時の表示に External URL(外向きの IP)も出る(Streamlit 1.67.0 で確かめた)。
-      公開範囲は企画書 §6-4・§8 Q-2 で【未決】なので、公開しない側に倒す
-    - `--browser.gatherUsageStats false`：Streamlit の既定では、ブラウザが利用状況を Streamlit 社へ送る
-      (Streamlit 1.67.0 の `streamlit config show` の既定値で確かめた)。画面からネットワークへ出ないように止める
+
+    3 つのオプションを付ける理由(既定値は Streamlit 1.67.0 の `streamlit config show` と、手元での起動で確かめた):
+    - `--server.address 127.0.0.1`：自分の PC だけで待ち受ける。付けないと、すべての口で待ち受けてほかの PC からも開け、
+      起動時に外向きの IP を調べて External URL として表示する。公開範囲は企画書 §6-4 で【未決】(§8 Q-2)なので、公開しない側に倒す
+    - `--server.headless true`：起動したときに、ブラウザを自動で開かない。既定は「Linux で DISPLAY が無いときだけ開かない」で、
+      PC(WSL かどうかなど)によって動きが変わるので、どの PC でも同じ動きにそろえるため
+    - `--browser.gatherUsageStats false`：利用状況を外(Streamlit 社)へ送らない(既定は送る)。画面からネットワークへ出ないようにするため
 
 方針:
 - このファイルは「ロジック層(viewer/records.py・viewer/grid.py)の関数を呼んで、表示するだけ」にする。
@@ -18,6 +20,9 @@
 - 領域の列・強中弱・総合スコア・平均・順位・スコアでの並べ替え・色の濃淡は作らない
   (企画書 §2-3 の「やらないこと」。領域単位の判定は §8 Q-6 で【未決】)
 - Streamlit は、操作のたびにこのファイルを 1 行目から実行し直す。上から順に読めば、画面の上から順に対応する
+- データ由来の文字列(企業名・モデル名・ベンチマーク名・読めない理由など)は、Markdown として描く部品
+  (st.markdown・st.info・st.error・st.caption など)に渡さない。`*`・`_`・`$…$`・`|` などが太字や数式になるため。
+  データは st.dataframe・st.text・st.code(どれも Markdown として解釈しない)で出し、Markdown の部品には固定の文だけを渡す
 """
 
 import sys
@@ -113,9 +118,11 @@ shown = filter_by_company(records, selected)
 
 # ---- 5. 企業ごとの最終取得日(常に出す) ----
 # 全体の最新日だけだと、古い企業まで新しく見えるので、企業ごとに出す
-st.markdown(
-    "**最終取得日**（企業ごと）：  \n"
-    + "  \n".join(f"{company}：{day}" for company, day in last_retrieved_by_company(shown).items())
+st.markdown("**最終取得日**（企業ごと）")
+st.dataframe(
+    [{"企業": company, "最終取得日": day} for company, day in last_retrieved_by_company(shown).items()],
+    hide_index=True,
+    width="content",
 )
 
 # ---- 6. 「モデル × ベンチマーク」の表 ----
@@ -125,7 +132,8 @@ if len(set(header)) != len(header):
     # 版を名前に含める書き方と別の項目にする書き方が混ざると、別の列に同じ見出しができ得る
     # (viewer/grid.py の BenchmarkColumn.label の注)。見出しで列を見分けられなくなるので、止める
     duplicated = sorted({h for h in header if header.count(h) > 1})
-    st.error("表の見出しが重なっているため、表を出せません：" + "、".join(duplicated))
+    st.error("表の見出しが重なっているため、表を出せません。重なった見出し：")
+    st.code("\n".join(duplicated), language=None)
     st.stop()
 
 # 見出しの文字列から、ベンチマークの列(BenchmarkColumn)を引くための対応
@@ -165,7 +173,8 @@ else:
         row = grid.rows[row_index]
         items = detail_items(grid.cell_at(row, column))
         if not items:
-            st.info(f"{row.label} × {column.label}：未公表（正式データにこの組の値がありません）")
+            st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")
+            st.text(f"{row.label} × {column.label}")
         else:
             # 測定条件だけが違う値は、1 つのセルに複数入る。1 件を 1 行にして並べる
             st.dataframe(
