@@ -87,6 +87,21 @@ MAX_ROWS_WITHOUT_SCROLL = 30
 DETAIL_HEIGHT = HEADER_HEIGHT + 2 * ROW_HEIGHT + 2
 
 
+# サイドバーの幅(px)。限界の 3 文・絞り込み・向き・最終取得日・凡例が、折り返しても読みやすく入る幅。
+# 1.67.0 の既定(18.75rem。文字の基準が 16px なら 300px)より少し広くとる
+SIDEBAR_WIDTH_PX = 340
+SIDEBAR_CSS = f"""<style>
+section[data-testid="stSidebar"][data-collapsed="false"] {{
+    width: {SIDEBAR_WIDTH_PX}px !important;
+    min-width: {SIDEBAR_WIDTH_PX}px !important;
+    max-width: {SIDEBAR_WIDTH_PX}px !important;
+}}
+section[data-testid="stSidebar"] div:has(> [data-testid="stSidebarResizeHandle"]) {{
+    display: none !important;
+}}
+</style>"""
+
+
 def shown_path(path):
     """画面に出すパス。リポジトリのルートからの相対で短くする。"""
     return path.relative_to(REPO_ROOT).as_posix()
@@ -106,6 +121,13 @@ def remember_orientation_choice():
 
 # 1.67.0 の set_page_config は、どこで何回呼んでもよい(docstring)。ページ全体の設定なので最初に置く
 st.set_page_config(page_title="Anatomia", layout="wide", initial_sidebar_state="expanded")
+# サイドバーの幅を固定し、境目のドラッグでの幅の変更を止める(操作は、もともとの開く・閉じるのボタンだけにする)。
+# 1.67.0 には、幅を固定する・リサイズを止める正規の指定が無い(set_page_config の initial_sidebar_state に
+# 幅〔px〕を渡せるが、最初の幅だけで、ドラッグは止まらない)ので、固定の文字列の CSS を 1 か所だけ入れる。
+# CSS が頼る `data-testid="stSidebar"`・`data-collapsed`・`data-testid="stSidebarResizeHandle"` は、
+# 1.67.0 の同梱の画面側のコード(static/js/index.*.js)にあることを確かめた。版が変わって名前が変わると、
+# この CSS は効かなくなるが、画面は壊れない(幅をドラッグで変えられるようになるだけ)。データ由来の文字は混ぜない
+st.html(SIDEBAR_CSS)
 
 # ---- 1. ダミーの表示(本文の最上部。1 行) ----
 if USE_DUMMY:

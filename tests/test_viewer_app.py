@@ -144,6 +144,13 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(list(last.columns), ["企業", "最終取得日"])
         self.assertEqual(last.values.tolist(), [["ダミー社A", "2026-10-01"], ["ダミー社B", "2026-10-15"]])
 
+    def test_サイドバーの幅を固定する_CSS_は固定の文字列だけ(self):
+        (html,) = self.at.html
+        self.assertIn('[data-testid="stSidebarResizeHandle"]', html.proto.body)
+        self.assertIn("340px", html.proto.body)
+        for name in ("ダミー社A", "Model-A1", "Bench-X"):
+            self.assertNotIn(name, html.proto.body)
+
     def test_絞り込みと向きの切り替えはサイドバーにある(self):
         self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業"])
         self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
