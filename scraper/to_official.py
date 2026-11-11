@@ -12,6 +12,8 @@ import csv
 import json
 import re
 import sys
+import warnings
+from collections import Counter
 from datetime import date
 from pathlib import Path
 
@@ -65,13 +67,24 @@ class ConversionError(ValueError):
     """入力が §3-3 の形になっていない。黙って直さず、どこが違うかを示して止める。"""
 
 
-def _check_date(value, where, label):
-    if not _DATE.fullmatch(value):
-        raise ConversionError(f"{where}: {label} が YYYY-MM-DD の形でない: {value!r}")
+def _is_date(value):
+    if not isinstance(value, str) or not _DATE.fullmatch(value):
+        return False
     try:
         date.fromisoformat(value)
     except ValueError:
-        raise ConversionError(f"{where}: {label} が存在しない日付: {value!r}") from None
+        return False
+    return True
+
+
+def _check_date(value, where, label):
+    if not _is_date(value):
+        raise ConversionError(f"{where}: {label} が YYYY-MM-DD の形(実在する日付)でない: {value!r}")
+
+
+def _check_sha(value, where, label):
+    if not isinstance(value, str) or not _SHA.fullmatch(value):
+        raise ConversionError(f"{where}: {label}が 40 桁の 16 進数でない: {value!r}")
 
 
 def read_manual_csv(path):
@@ -98,8 +111,8 @@ def read_manual_csv(path):
                 raise ConversionError(f"{where}: スコアが数字でない: {cells['score']!r}")
             cells["score"] = float(cells["score"])
             _check_date(cells["retrieved_at"], where, "取得日")
-            if cells["sha"] is not None and not _SHA.fullmatch(cells["sha"]):
-                raise ConversionError(f"{where}: READMEの版(sha)が 40 桁の 16 進数でない: {cells['sha']!r}")
+            if cells["sha"] is not None:
+                _check_sha(cells["sha"], where, "READMEの版(sha)")
             cells.update(provider=provider, retrieval_method="manual", as_of=None)
             records.append({key: cells.get(key) for key in OFFICIAL_KEYS})
     return records
@@ -111,14 +124,33 @@ def read_scraper_json(path):
     if not isinstance(data, dict) or not isinstance(data.get("records"), list):
         raise ConversionError(f"{path.name}: {{\"records\": [...]}} の形でない")
     records = []
+    bad_as_of = []
     for i, rec in enumerate(data["records"], 1):
+        where = f"{path.name} {i} 件目"
+        if not isinstance(rec, dict):
+            raise ConversionError(f"{where}: オブジェクトでない: {rec!r}")
         for key in REQUIRED_KEYS:
             if rec.get(key) in (None, ""):
-                raise ConversionError(f"{path.name} {i} 件目: 必須のキー {key} がない")
+                raise ConversionError(f"{where}: 必須のキー {key} がない")
         if isinstance(rec["score"], bool) or not isinstance(rec["score"], (int, float)):
-            raise ConversionError(f"{path.name} {i} 件目: score が数値でない: {rec['score']!r}")
+            raise ConversionError(f"{where}: score が数値でない: {rec['score']!r}")
+        _check_date(rec["retrieved_at"], where, "取得日(retrieved_at)")
+        if rec["retrieval_method"] not in ("script", "manual"):
+            raise ConversionError(f"{where}: retrieval_method が script でも manual でもない: {rec['retrieval_method']!r}")
+        if rec.get("sha") is not None:
+            _check_sha(rec["sha"], where, "sha")
         # 表にないキー(Google の benchmark_description・source_category など)は落とし、足りない任意のキーは null にする
-        records.append({key: rec.get(key) for key in OFFICIAL_KEYS})
+        out = {key: rec.get(key) for key in OFFICIAL_KEYS}
+        # Google のモデルカードの as_of は「May, 2026」のように年月だけで、§3-3 の YYYY-MM-DD にできない。日にちを作らず null にして知らせる
+        if out["as_of"] is not None and not _is_date(out["as_of"]):
+            bad_as_of.append(out["as_of"])
+            out["as_of"] = None
+        records.append(out)
+    if bad_as_of:
+        warnings.warn(
+            f"{path.name}: as_of が YYYY-MM-DD でない {len(bad_as_of)} 件は null にした(例: {bad_as_of[0]!r})。年月だけの日付の書き方は §3-3 にない",
+            stacklevel=2,
+        )
     return records
 
 
@@ -130,22 +162,46 @@ def write_official(records, out_path):
         f.write("\n")
 
 
-def convert(src, out_dir):
-    src = Path(src)
+def _read(src):
+    """入力 1 つを読み、(会社名, レコード)を返す。"""
     if src.suffix == ".csv":
-        records = read_manual_csv(src)
-        name = src.stem
-    elif src.suffix == ".json":
+        return src.stem, read_manual_csv(src)
+    if src.suffix == ".json":
         records = read_scraper_json(src)
         providers = {r["provider"] for r in records}
         if len(providers) != 1:
             raise ConversionError(f"{src.name}: 提供企業が 1 つに決まらない: {sorted(providers)}")
-        name = providers.pop()
-    else:
-        raise ConversionError(f"{src.name}: 拡張子が .csv でも .json でもない")
-    out = Path(out_dir) / f"{name}.json"
-    write_official(records, out)
-    return out
+        return providers.pop(), records
+    raise ConversionError(f"{src.name}: 拡張子が .csv でも .json でもない")
+
+
+def _warn_duplicates(name, records):
+    keys = ("model", "model_type", "mode", "benchmark", "benchmark_version", "condition")
+    counts = Counter(tuple(r[k] for k in keys) for r in records)
+    dups = [k for k, n in counts.items() if n > 1]
+    if dups:
+        warnings.warn(
+            f"{name}: 同じ組(モデル・種類・推論モード・ベンチマーク・版・測定条件)の値が {len(dups)} 組で複数ある(例: {dups[0]})。"
+            "どれを正式データに入れるかは未決(企画書 §8 Q-4)なので、すべて残した",
+            stacklevel=2,
+        )
+
+
+def convert(sources, out_dir):
+    """入力をすべて読み、会社ごとに 1 つのファイルへ書き出す。書き出したパスを返す。
+    同じ会社の入力が複数あっても、1 回でまとめて書くので、先に書いた分を消さない。どれか 1 つでも読めなければ、何も書かない。"""
+    grouped = {}
+    for src in sources:
+        name, records = _read(Path(src))
+        grouped.setdefault(name, []).extend(records)
+    for name, records in grouped.items():
+        _warn_duplicates(name, records)
+    outs = []
+    for name, records in grouped.items():
+        out = Path(out_dir) / f"{name}.json"
+        write_official(records, out)
+        outs.append(out)
+    return outs
 
 
 def main():
@@ -154,11 +210,11 @@ def main():
     ap.add_argument("--out-dir", default="data/official", help="書き出す先のディレクトリ")
     args = ap.parse_args()
     try:
-        for src in args.sources:
-            out = convert(src, args.out_dir)
-            print(f"{src} → {out}", file=sys.stderr)
+        outs = convert(args.sources, args.out_dir)
     except ConversionError as e:
         sys.exit(str(e))
+    for out in outs:
+        print(f"→ {out}", file=sys.stderr)
 
 
 if __name__ == "__main__":
