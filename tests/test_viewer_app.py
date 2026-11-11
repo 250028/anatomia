@@ -57,6 +57,7 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(len(self.at.error), 0)
 
     def test_最上部にダミーデータの表示が出る(self):
+        # ダミーの fixtures も取得方法は script／manual なので、表示は値ではなく `--dummy` の指定で出す
         first = self.at.main[0]
         self.assertEqual(first.type, "warning")
         self.assertIn("ダミーデータ", first.value)
@@ -124,6 +125,7 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(record["出典 URL"], "https://example.com/dummy-a/modelcard")
         self.assertEqual(record["取得日"], "2026-10-01")
         self.assertEqual(record["取得者"], "ダミー")
+        self.assertEqual(record["取得方法"], "スクリプト")
         self.assertEqual(record["測定条件"], "記載なし")
 
     def test_測定条件だけが違う値は詳細に_2_行出る(self):
