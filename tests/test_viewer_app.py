@@ -179,15 +179,23 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業"])
         self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
 
-    def test_本文は_ダミーの表示_常に出す_1_行_表_凡例_詳細の順(self):
+    def test_本文は_ダミーの表示_常に出す_1_行_表_詳細_凡例の順(self):
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
-        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "caption", "markdown", "caption"])
+        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "caption", "caption"])
         self.assertIn("ダミーデータ", parts[0].value)
         self.assertIn("自己申告", parts[1].value)
-        self.assertIn("赤い太字", parts[3].value)  # 凡例の 1 行は表のすぐ下
-        self.assertEqual(parts[4].value, "**選んだセルの詳細**")  # 詳細は表の下
-        self.assertIn("セルを選ぶと", parts[5].value)
+        self.assertEqual(parts[3].value, "**選んだセルの詳細**")  # 詳細は表の下
+        self.assertIn("セルを選ぶと", parts[4].value)
+        self.assertIn("赤い太字", parts[5].value)  # 凡例の全文は本文のいちばん下
         self.assertEqual(len(self.at.expander), 0)
+
+    def test_セルを選ぶと_詳細は表と凡例の間に出る(self):
+        i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
+        self.select(i, "Bench-W")
+        parts = [self.at.main[i] for i in range(len(self.at.main.children))]
+        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "dataframe", "caption"])
+        self.assertEqual(list(parts[4].value.columns)[:1], ["モデル"])
+        self.assertIn("赤い太字", parts[5].value)
 
     def test_メニューは最初は閉じる設定(self):
         # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
@@ -231,9 +239,12 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(len(marked), 19)
         self.assertEqual(cell_styles(main_element(self.at))[f"color: {GREY}"], marked)
 
-    def test_凡例は_未公表の記号と_印と_赤い文字の説明をサイドバーに常に出す(self):
-        text = "\n".join(c.value for c in self.at.sidebar.caption)
-        self.assertIn(f"「{MARK}」：未公表", text)
+    def test_凡例の全文は本文のいちばん下に常に出し_メニューには置かない(self):
+        last = self.at.main[len(self.at.main.children) - 1]
+        self.assertEqual(last.type, "caption")
+        text = last.value
+        self.assertFalse(any("未公表" in c.value or "赤い太字" in c.value for c in self.at.sidebar.caption))
+        self.assertIn(f"「{MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）", text)
         self.assertIn("「※」：測定条件", text)
         self.assertIn("赤い太字：そのベンチマークで、公表された値のうち最大のもの", text)
         for word in ("最良", "1 位", "最も強い"):

@@ -239,15 +239,7 @@ transposed = orientation == BENCHMARKS_AS_ROWS
 last_retrieved = "、".join(f"{company} {day}" for company, day in last_retrieved_by_company(shown).items())
 st.text(f"{LIMITS[0]}（限界の全文は左のメニュー）。　最終取得日（企業ごと）：{last_retrieved}")
 
-# ---- 7. サイドバー：凡例(全文) ----
-st.sidebar.caption(
-    f"「{NOT_PUBLISHED_MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）。  \n"
-    "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。  \n"
-    "赤い太字：そのベンチマークで、公表された値のうち最大のもの（2 つ以上のモデルが公表し、単位がそろうときだけ）。"
-    "値が小さいほど良いベンチマークや、測定条件が違う値（※）があるときは、いちばん良い結果とは限りません。"
-)
-
-# ---- 8. 「モデル × ベンチマーク」の表 ----
+# ---- 7. 「モデル × ベンチマーク」の表 ----
 conflicts = label_conflicts(grid, transposed)
 if conflicts:
     # 見出しが重なると、選んだ列を見出しから引けず、人も見分けられないので止める
@@ -282,13 +274,7 @@ event = st.dataframe(
     key=f"表の選択:{orientation}:" + "|".join(sorted(selected)),
 )
 
-# 凡例の 1 行(全文はメニュー)。メニューが閉じていても、記号と赤い太字の意味が分かるように
-st.caption(
-    f"「{NOT_PUBLISHED_MARK}」未公表　｜　「※」測定条件つき　｜　赤い太字：そのベンチマークで公表された値のうち最大"
-    "（いちばん良い結果とは限りません。全文は左のメニュー）"
-)
-
-# ---- 9. 選んだセルの詳細(表の下) ----
+# ---- 8. 選んだセルの詳細(表の下、凡例の上) ----
 st.markdown("**選んだセルの詳細**")
 selected_cells = event.selection.cells  # [(行の番号, 列の見出し)]。選んでいなければ空
 pair = pair_at(grid, *selected_cells[0], transposed=transposed) if selected_cells else None
@@ -314,3 +300,12 @@ else:
             column_config={"出典 URL": st.column_config.LinkColumn("出典 URL")},
             placeholder="",
         )
+
+# ---- 9. 凡例(本文のいちばん下。全文。メニューには置かない〔同じ文を 2 か所に置かない〕) ----
+# メニューが閉じていても、記号と赤い太字の意味が分かるように本文に出す(水戸さんの指示。2026-11-11)
+st.caption(
+    f"「{NOT_PUBLISHED_MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）。  \n"
+    "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。  \n"
+    "赤い太字：そのベンチマークで、公表された値のうち最大のもの（2 つ以上のモデルが公表し、単位がそろうときだけ）。"
+    "値が小さいほど良いベンチマークや、測定条件が違う値（※）があるときは、いちばん良い結果とは限りません。"
+)
