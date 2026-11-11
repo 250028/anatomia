@@ -113,8 +113,19 @@ SIDEBAR_INITIAL_STATE = "collapsed"
 #   1.67.0 の同梱の画面側のコードが、画面の幅が狭いとき(md 以下)に本文へ付けている指定
 #   (position: absolute; top/left/right/bottom: 0; height: 100dvh)を、どの幅でも付ける
 # - メニューの幅を固定し、幅を変える取っ手を隠す(ドラッグで幅を変えられないようにする)
-# 頼る名前(stMain・stSidebar・data-collapsed・stSidebarResizeHandle)は 1.67.0 の同梱コード(static/js/index.*.js)にある。
-# 版が変わって名前が変わると効かなくなるが、画面は壊れない(メニューが本文を押して狭くする、元の動きに戻るだけ)
+# - 閉じるボタン(stSidebarCollapseButton)を、開くボタン(stExpandSidebarButton)と同じ左上の位置に固定し、常に見せる。
+#   同じ場所を続けて押すだけで開く・閉じるを切り替えられるようにする(水戸さんの依頼。2026-11-11)。
+#   1.67.0 の作り：開くボタンは、メニューが閉じているときだけ、本文の上部の帯(stHeader。画面の上端に置かれ、高さ 3.75rem)
+#   の中で、左から 1rem の位置に、上下の中央に描かれる。閉じるボタンは、メニューが開いているときだけ、メニューの
+#   見出しの行(stSidebarHeader)の右寄りに描かれ、メニューにカーソルを乗せたときだけ見える(visibility)。
+#   2 つは同じ部品・同じ大きさの絵(xl)なので、どちらも「画面の左から 1rem、上から 1.875rem(帯の高さの半分)を
+#   中心の高さにする」位置に固定し、同じ座標に重ねる(開くボタンは元の位置とほぼ同じ。閉じるボタンの外側の箱は
+#   中のボタンと同じ大きさになるよう flex にする)。メニューは本文の帯より上に重なり(z-index)、開いている間は変形
+#   (transform)が無いので、position: fixed で画面に対して固定できる。メニューの見出しの行は高さを持ったまま残り、
+#   ボタンはその空きの中に入るので、メニューの中身の先頭とは重ならない
+# 頼る名前(stMain・stSidebar・data-collapsed・stSidebarResizeHandle・stSidebarCollapseButton・stExpandSidebarButton)は
+# 1.67.0 の同梱コード(static/js/index.*.js)にある。版が変わって名前が変わると効かなくなるが、画面は壊れない
+# (メニューが本文を押して狭くする・幅を変えられる・ボタンが元の位置に戻る、元の動きに戻るだけ)
 SIDEBAR_CSS = f"""<style>
 main[data-testid="stMain"] {{
     position: absolute !important;
@@ -131,6 +142,19 @@ section[data-testid="stSidebar"][data-collapsed="false"] {{
 }}
 section[data-testid="stSidebar"] div:has(> [data-testid="stSidebarResizeHandle"]) {{
     display: none !important;
+}}
+[data-testid="stSidebarCollapseButton"],
+[data-testid="stExpandSidebarButton"] {{
+    position: fixed !important;
+    top: 1.875rem !important;
+    left: 1rem !important;
+    transform: translateY(-50%) !important;
+    margin: 0 !important;
+}}
+[data-testid="stSidebarCollapseButton"] {{
+    display: flex !important;
+    visibility: visible !important;
+    transition: none !important;
 }}
 </style>"""
 

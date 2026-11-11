@@ -172,6 +172,10 @@ class DummyDataTest(unittest.TestCase):
         self.assertIn('[data-testid="stSidebarResizeHandle"]', html.proto.body)
         self.assertIn("460px", html.proto.body)
         self.assertIn('main[data-testid="stMain"]', html.proto.body)  # 本文を幅いっぱいにし、メニューを上に重ねる
+        # 閉じるボタンを、開くボタンと同じ左上の位置に固定する(説明のコメントに開くボタンの名前がある)
+        self.assertIn('[data-testid="stSidebarCollapseButton"]', html.proto.body)
+        self.assertIn("position: fixed", html.proto.body)
+        self.assertIn('[data-testid="stExpandSidebarButton"]', html.proto.body)
         for name in ("ダミー社A", "Model-A1", "Bench-X"):
             self.assertNotIn(name, html.proto.body)
 
