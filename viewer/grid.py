@@ -159,11 +159,18 @@ def table_header(grid):
     return ["提供企業", "モデル", "種類", "推論モード"] + [c.label for c in grid.columns]
 
 
-def table_rows(grid):
-    """表示用の文字列の行。`table_header` と同じ並びで、スコアの列は `Cell.text`(未公表を含む)。"""
+def _shown_text(cell, not_published):
+    """表のセルに出す文字列。未公表のセルだけ `not_published` にし、値のあるセルは `Cell.text` のまま。"""
+    return cell.text if cell.is_published else not_published
+
+
+def table_rows(grid, not_published=NOT_PUBLISHED):
+    """表示用の文字列の行。`table_header` と同じ並びで、スコアの列は `Cell.text`(未公表を含む)。
+    `not_published`：未公表のセルに出す文字列。画面が記号で出すときに渡す(「未公表」という意味は変わらない。
+    `Cell.text`・`NOT_PUBLISHED` はそのまま)。既定は「未公表」の文字。"""
     return [
         [row.provider, row.model, row.model_type or _NONE_TEXT, row.mode or _NONE_TEXT]
-        + [grid.cell(i, j).text for j in range(len(grid.columns))]
+        + [_shown_text(grid.cell(i, j), not_published) for j in range(len(grid.columns))]
         for i, row in enumerate(grid.rows)
     ]
 
@@ -183,13 +190,13 @@ def transposed_header(grid):
     return [TRANSPOSED_FIRST_COLUMN] + [row.label for row in grid.rows]
 
 
-def transposed_rows(grid):
+def transposed_rows(grid, not_published=NOT_PUBLISHED):
     """ベンチマークを行にした表の行。1 行目は提供企業の行、2 行目からは 1 行が 1 つのベンチマーク。
     j 行目(提供企業の行を除いて数える)の i 列目(1 列目を除いて数える)は、`table_rows(grid)[i]` の
-    ベンチマークの列の j 番目と同じセル。"""
+    ベンチマークの列の j 番目と同じセル。`not_published` は `table_rows` と同じ。"""
     provider_row = [PROVIDER_ROW] + [row.provider for row in grid.rows]
     return [provider_row] + [
-        [column.label] + [grid.cell(i, j).text for i in range(len(grid.rows))]
+        [column.label] + [_shown_text(grid.cell(i, j), not_published) for i in range(len(grid.rows))]
         for j, column in enumerate(grid.columns)
     ]
 
@@ -226,6 +233,15 @@ def pair_at(grid, row_index, column_label, transposed=False):
     if column is None or not 0 <= row_index < len(grid.rows):
         return None
     return grid.rows[row_index], column
+
+
+def cell_position(grid, row, column, transposed=False):
+    """(`ModelRow`, `BenchmarkColumn`) のセルが、その向きの表(`table_rows`・`transposed_rows`)の
+    何行目・何列目にあるか(どちらも 0 から)。`pair_at` の逆。画面がセルに色を付けるときに使う。"""
+    i, j = grid.rows.index(row), grid.columns.index(column)
+    if transposed:
+        return 1 + j, 1 + i  # 1 行目は提供企業の行、1 列目はベンチマーク名の列
+    return i, len(table_header(grid)) - len(grid.columns) + j
 
 
 def prefers_transposed(grid):

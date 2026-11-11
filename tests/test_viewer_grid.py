@@ -6,6 +6,7 @@ from viewer.grid import (
     CONDITION_MARK,
     NOT_PUBLISHED,
     build_grid,
+    cell_position,
     companies,
     detail_items,
     filter_by_company,
@@ -323,6 +324,29 @@ class TransposeTest(unittest.TestCase):
         self.assertIsNone(pair_at(g, 1, TRANSPOSED_FIRST_COLUMN, transposed=True))
         self.assertIsNone(pair_at(g, 1 + len(g.columns), label, transposed=True))
         self.assertIsNone(pair_at(g, 1, "存在しない列", transposed=True))
+
+    def test_未公表のセルの表示は引数で変えられ_意味と値のセルは変わらない(self):
+        g = self.grid
+        default, marked = table_rows(g), table_rows(g, not_published="—")
+        t_default, t_marked = transposed_rows(g), transposed_rows(g, not_published="—")
+        for before, after in ((default, marked), (t_default, t_marked)):
+            for row_before, row_after in zip(before, after):
+                for x, y in zip(row_before, row_after):
+                    self.assertEqual(y, "—" if x == NOT_PUBLISHED else x)
+        self.assertEqual(sum(r.count("—") for r in marked), sum(r.count("—") for r in t_marked))
+        self.assertEqual(g.cell(find_row(g, "Model-B2", None, "Max"), find_col(g, "Bench-X")).text, NOT_PUBLISHED)
+
+    def test_セルの位置は_pair_at_の逆(self):
+        g = self.grid
+        for transposed in (False, True):
+            rows = transposed_rows(g) if transposed else table_rows(g)
+            header = transposed_header(g) if transposed else table_header(g)
+            for row in g.rows:
+                for column in g.columns:
+                    r, c = cell_position(g, row, column, transposed)
+                    with self.subTest(transposed=transposed, row=row.label, column=column.label):
+                        self.assertEqual(pair_at(g, r, header[c], transposed=transposed), (row, column))
+                        self.assertEqual(rows[r][c], g.cell_at(row, column).text)
 
     def test_ダミーでは見出しは重ならない(self):
         self.assertEqual(label_conflicts(self.grid), [])

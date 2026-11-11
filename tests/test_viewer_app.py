@@ -10,6 +10,7 @@ test_viewer_grid.py)は streamlit が無くても走る。
 """
 
 import json
+import re
 import shutil
 import sys
 import tempfile
@@ -28,6 +29,8 @@ FIXTURES = REPO_ROOT / "tests" / "fixtures" / "official"
 # 最初の実行は streamlit の import で数秒かかることがあるので、待ち時間を長めにとる
 TIMEOUT = 60
 SKIP_REASON = "streamlit が入っていない(画面のテストは skip)"
+MARK = "—"  # 未公表のセルに出す記号(viewer/app.py の NOT_PUBLISHED_MARK)
+GREY = "#9aa0a6"  # 未公表の記号の文字色(viewer/app.py の NOT_PUBLISHED_COLOR)
 
 
 def rerun(at, *args):
@@ -51,6 +54,19 @@ def main_table(at):
     found = tables(at, "提供企業")
     assert len(found) == 1, f"モデル×ベンチマークの表が {len(found)} 個ある"
     return found[0]
+
+
+def main_element(at):
+    return next(d for d in at.dataframe if d.key and d.key.startswith("表の選択:"))
+
+
+def cell_styles(element):
+    """表(Styler で渡したもの)のセルの文字色などを、{CSS の宣言: {(行, 列), ...}} にする(行・列は 0 から)。"""
+    found = {}
+    for selectors, declaration in re.findall(r"([^{}]+)\{([^}]*)\}", element.proto.arrow_data.styler.styles):
+        cells = {(int(r), int(c)) for r, c in re.findall(r"_row(\d+)_col(\d+)", selectors)}
+        found.setdefault(declaration.strip(), set()).update(cells)
+    return found
 
 
 def markdown_texts(at):
@@ -180,16 +196,26 @@ class DummyDataTest(unittest.TestCase):
     def test_値の無いセルは名指しで未公表_値のあるセルは値(self):
         table = main_table(self.at)
         cases = [
-            (("Model-A1", "Instruct", "（なし）"), "Bench-Y", "未公表"),
-            (("Model-A2", "（なし）", "（なし）"), "Bench-W", "未公表"),
-            (("Model-B2", "（なし）", "Max"), "Bench-X", "未公表"),
-            (("Model-B1", "（なし）", "（なし）"), "Bench-Y", "未公表"),
+            (("Model-A1", "Instruct", "（なし）"), "Bench-Y", MARK),
+            (("Model-A2", "（なし）", "（なし）"), "Bench-W", MARK),
+            (("Model-B2", "（なし）", "Max"), "Bench-X", MARK),
+            (("Model-B1", "（なし）", "（なし）"), "Bench-Y", MARK),
             (("Model-A1", "Reasoning", "High"), "Bench-Y", "1650 Elo"),
             (("Model-B1", "（なし）", "（なし）"), "Bench-Z", "0.91"),
         ]
         for row, column, expected in cases:
             with self.subTest(row=row, column=column):
                 self.assertEqual(table.loc[row_index_of(table, *row), column], expected)
+        # 表の中には「未公表」の文字を出さない(記号だけ)。記号のセルは、灰色の文字のセルとちょうど一致する
+        self.assertNotIn("未公表", table.values.ravel().tolist())
+        marked = {(r, c) for r in range(len(table)) for c in range(len(table.columns)) if table.iat[r, c] == MARK}
+        self.assertEqual(len(marked), 19)
+        self.assertEqual(cell_styles(main_element(self.at))[f"color: {GREY}"], marked)
+
+    def test_凡例は_未公表の記号と_印の説明をサイドバーに常に出す(self):
+        text = "\n".join(c.value for c in self.at.sidebar.caption)
+        self.assertIn(f"「{MARK}」：未公表", text)
+        self.assertIn("「※」：測定条件", text)
 
     def test_測定条件だけが違う値は_1_つのセルに並び_印が付く(self):
         table = main_table(self.at)
@@ -321,7 +347,10 @@ class DummyDataTest(unittest.TestCase):
         before = normal.iloc[:, 4:].values.ravel().tolist()
         after = table.iloc[1:, 1:].values.ravel().tolist()
         self.assertEqual(len(before), len(after))
-        self.assertEqual(before.count("未公表"), after.count("未公表"))
+        self.assertEqual(before.count(MARK), after.count(MARK))
+        self.assertEqual(after.count(MARK), 19)
+        self.assertNotIn("未公表", after)
+        self.assertEqual(len(cell_styles(main_element(self.at))[f"color: {GREY}"]), 19)
         self.assertEqual(sum("※" in c for c in before), sum("※" in c for c in after))
         (element,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
         config = json.loads(element.proto.columns)
@@ -347,6 +376,15 @@ class DummyDataTest(unittest.TestCase):
                 self.assertEqual(len(self.at.exception), 0)
                 self.assertEqual(self.details(), [])
                 self.assertTrue(any("スコアのセル" in c.value for c in self.at.caption))
+
+    def test_入れ替えた向きでも_未公表のセルを選ぶと詳細の欄に未公表と出る(self):
+        self.transpose()
+        (table,) = tables(self.at, "ベンチマーク")
+        self.assertEqual(table.loc[4, "Model-A1 (Instruct)"], MARK)  # Bench-Y
+        self.select(4, "Model-A1 (Instruct)")
+        self.assertEqual(self.details(), [])
+        self.assertTrue(any("選んだセルは「未公表」" in i.value for i in self.at.info))
+        self.assertIn("Model-A1 (Instruct) × Bench-Y", [t.value for t in self.at.text])
 
     def test_自分で選んだ向きは_絞り込みを変えても保つ(self):
         self.transpose()

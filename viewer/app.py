@@ -28,6 +28,7 @@
 import sys
 from pathlib import Path
 
+import pandas as pd  # streamlit が依存していて一緒に入る。表のセルの文字色(Styler)にだけ使う
 import streamlit as st
 
 # `streamlit run viewer/app.py` は、このファイルのあるフォルダ(viewer/)を import の探し先に足すが、
@@ -39,6 +40,7 @@ if str(REPO_ROOT) not in sys.path:
 
 from viewer.grid import (  # noqa: E402(上の sys.path の後で import する)
     build_grid,
+    cell_position,
     companies,
     detail_items,
     filter_by_company,
@@ -70,6 +72,13 @@ LIMITS = [
 ]
 
 # 表の向きの選択肢(サイドバーの切り替え)
+# 未公表のセルに出す記号。表の 8 割を占める「未公表」の文字の繰り返しをやめ、値のあるセルを目に入りやすくする
+# (水戸さんの依頼。2026-11-11)。「—」(全角幅のダッシュ)は、表で「値なし」によく使われる静かな記号で、
+# 負の数の「-」や、1 つのセルに値を並べる「 / 」と紛れない。意味は「未公表」のまま(凡例に常に出し、詳細では言葉で出す)
+NOT_PUBLISHED_MARK = "—"
+# 未公表の記号の文字色。値のある文字より薄くする(明るい背景でも暗い背景でも読める灰色)。値のあるセルの濃淡はしない
+NOT_PUBLISHED_COLOR = "#9aa0a6"
+
 MODELS_AS_ROWS = "モデルを行に"
 BENCHMARKS_AS_ROWS = "ベンチマークを行に"
 
@@ -112,6 +121,19 @@ def table_height(row_count):
     if row_count <= MAX_ROWS_WITHOUT_SCROLL:
         return "content"
     return HEADER_HEIGHT + MAX_ROWS_WITHOUT_SCROLL * ROW_HEIGHT + 2  # 2 は上下の枠線(1px ずつ)
+
+
+def styled_table(header, rows, grid, transposed):
+    """表(見出しと行)を、セルの文字色を付けた pandas の Styler にする。色は位置(行・列)で付け、値の文字では判断しない
+    (企業名やモデル名が記号と同じ文字でも、取り違えないため)。いまは、未公表のセルを薄い灰色にするだけ。"""
+    styles = [["" for _ in header] for _ in rows]
+    for row in grid.rows:
+        for column in grid.columns:
+            if not grid.cell_at(row, column).is_published:
+                r, c = cell_position(grid, row, column, transposed)
+                styles[r][c] = f"color: {NOT_PUBLISHED_COLOR}"
+    frame = pd.DataFrame(rows, columns=header)
+    return frame.style.apply(lambda _: pd.DataFrame(styles, index=frame.index, columns=frame.columns), axis=None)
 
 
 def remember_orientation_choice():
@@ -192,8 +214,8 @@ st.sidebar.dataframe(
     row_height=ROW_HEIGHT,
 )
 st.sidebar.caption(
-    "「未公表」は、正式データにその組の値がないことを示します（低いスコアという意味ではありません）。"
-    "「※」は測定条件が付いた値です。条件は、セルを選ぶと詳細に出ます。"
+    f"「{NOT_PUBLISHED_MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）。  \n"
+    "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。"
 )
 
 # ---- 7. 「モデル × ベンチマーク」の表 ----
@@ -206,10 +228,10 @@ if conflicts:
     st.stop()
 
 if transposed:
-    header, rows = transposed_header(grid), transposed_rows(grid)
+    header, rows = transposed_header(grid), transposed_rows(grid, not_published=NOT_PUBLISHED_MARK)
     pinned_columns = header[:1]  # ベンチマーク名の列
 else:
-    header, rows = table_header(grid), table_rows(grid)
+    header, rows = table_header(grid), table_rows(grid, not_published=NOT_PUBLISHED_MARK)
     pinned_columns = header[: len(header) - len(grid.columns)]  # 提供企業・モデル・種類・推論モード
 
 # 詳細の欄は、表の上に、高さを固定して先に置く(中身は、表で選ばれたセルが分かった後に入れる)。
@@ -217,7 +239,7 @@ else:
 detail_area = st.container(height=DETAIL_HEIGHT, border=False)
 
 event = st.dataframe(
-    [dict(zip(header, row)) for row in rows],
+    styled_table(header, rows, grid, transposed),
     hide_index=True,
     height=table_height(len(rows)),
     row_height=ROW_HEIGHT,
