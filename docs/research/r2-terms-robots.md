@@ -87,9 +87,17 @@
 | Mistral-Small-4-119B-2603 | Apache 2.0。末尾に "このモデルを、知的財産権を含む第三者の権利を侵害、不正使用、または違反するような方法で使用してはなりません" とある | README 本文 |
 | DeepSeek-V4-Pro | MIT（「このリポジトリとモデルの重みは、MIT ライセンスの下でライセンスされています」） | README 末尾の「ライセンス」の節。ページ上部にバッジもある |
 | Qwen3.8-27B | Apache 2.0（`license: apache-2.0`） | README 先頭の YAML 情報（`/raw/main/README.md`）。README 本文に License の節はない |
+| DeepSeek-V4-Pro-0813 | MIT（"This repository and the model weights are licensed under the MIT License."） | README の「License」の節。2026-11-11 に蒲山が自分のブラウザで見た（画像で見せてもらった） |
+| DeepSeek-V4.1-Flash | MIT | README の「License」の節。2026-11-11 に蒲山が自分のブラウザで見た（蒲山の報告。画像は見ていない） |
+
+- **DeepSeek の 2 つの確認者**：`DeepSeek-V4-Pro-0813` と `DeepSeek-V4.1-Flash` は、2026-11-04 に蒲山が自分のブラウザで、リポジトリの実在と License（MIT）を見ている（`scraper/hf_readme.py` の `REPO_IDS` のコメントの記録）。2026-11-11 に、蒲山が README の「License」の節を見直した（上の表）。Claude Code は Hugging Face にアクセスしていない。確かめたのは README の節だけで、LICENSE ファイルとページ上部のバッジは見ていない
 
 - **Ministral 3 系の License**：スクリプトで取るのは Ministral 3 系なので、根拠は取得するリポジトリのものにする必要がある。レビュアーが Ministral-3-14B-Instruct-2512 の README で "This model is licensed under the Apache 2.0 License" を確認している（私たち自身では未確認）。**取得を始める前に、対象のリポジトリで確認する**
-- 未確認：補足規約（Supplemental Terms、PDF）、Content Policy の本文、各リポジトリの LICENSE ファイル
+- **Hugging Face の規約と Content Policy の本文（2026-11-11 に確認）**：蒲山が自分のブラウザで、Terms of Service（Effective Date: 2022-09-15）と Content Policy（発効日 2025-04-10。日本語表示）を開き、全文をコピーして Claude Code に渡した。Claude Code が通読した（Hugging Face にはアクセスしていない。語の検索ではなく通読で、日本語表示の訳文）
+  - **規約本文**：自動取得（スクレイピング・ロボット・ボットなど）を禁止または制限する条項は、見当たらなかった（§3-1 の結果と同じ）。補足規約（Supplemental Terms）は、規約本文に「特定のサービスについて、補足規約を掲載・更新することがある」とある。対象のサービスは、規約本文の定義にある Inference Providers・AutoTrain・Infinity・Inference Endpoints など個別のものだが、公開リポジトリの README を読む行為がこれに当たるかは、補足規約の PDF を見ないと分からない
+  - **Content Policy**：自動取得そのものを禁止する文言はない。ただし「プラットフォームの悪用、セキュリティ違反、スパム」の節に、「Hugging Face サービスに対する悪用または妨害行為」の例として、「許可されていないボット API またはリモート管理ツールを使用すること」がある（日本語表示。英語の原文は未確認）。「許可されていない」が何を指すかは、ポリシーの本文に定義がない。同じ節には、制限を回避する道具の使用（Cloudflare Tunnel・TOR・プロキシ・VNC・Chrome Remote Server）と、スパム（過剰な大量送信）もある
+  - **この整理**：私たちの取得は、README を 1 回だけ、3 秒以上の間隔で、制限を回避せず（403・429 で止まる）、User-Agent で名乗って行う（企画書 §6-3）。このため、悪用・妨害の例には当たらないと読む。ただし、「許可されていないボット」に当たらないとは、本文からは断定できない。法的な判断ではなく、文面を読んだ整理。取得してよいかは、この記録を踏まえてチームで決める
+- 未確認：補足規約（Supplemental Terms、PDF）、Content Policy の「許可されていないボット API」の英語の原文、各リポジトリの LICENSE ファイル
 
 **xAI（規約本体と AUP）**
 
@@ -169,6 +177,6 @@
 - Qwen の規約（Service Agreement）は、ブラウザで本文を確認した（英語の原文）。日付と、規約が取り込む Use Policy の本文は未確認
 - Meta の自動データ収集規約（Effective October 7, 2024）は、ブラウザで本文を確認した。Facebook 利用規約（2025-01-01 適用の日本語版）は貼り付けで確認した。dev.meta.ai のページの「利用規約」リンクがこの規約に遷移することも確認した。最新版かどうかと、「Meta 社製品」の定義ページは未確認
 - 各リポジトリの License は、Qwen が README 先頭の YAML 情報で Apache 2.0、DeepSeek が README 本文で MIT、Mistral（Small 4）が README 本文で Apache 2.0 と確認した（LICENSE ファイルは未確認）。スクリプトで取る Ministral 3 系の License は、レビューでの確認のみで、取得前に対象のリポジトリで確認する（§3-3）
-- Hugging Face の規約は、HTML 本文の語の検索（「scrape / crawl / robot / bot / spider / harvest / extract / mining / rate / API」など）と、ブラウザでの全文確認（日本語表示）の両方で、自動取得を禁止する条項が見当たらないことを確認した。補足規約（Supplemental Terms）と Content Policy の本文は未確認
+- Hugging Face の規約は、HTML 本文の語の検索（「scrape / crawl / robot / bot / spider / harvest / extract / mining / rate / API」など）と、ブラウザでの全文確認（日本語表示）の両方で、自動取得を禁止する条項が見当たらないことを確認した。Content Policy の本文は 2026-11-11 に確認した（§3-3。「許可されていないボット API」の文言が 1 つあり、整理を §3-3 に書いた）。補足規約（Supplemental Terms）は未確認
 - 規約は予告なく改定される（Google・Mistral・OpenAI・xAI は直近数か月〜数週間以内に改定されている。Google の利用規約は 2026-07-30 付）。実際に取得を始める前に再確認する
 - 各社サイトの URL・ページ構成は R-1 の調査時点のもの。R-1 と合わせて、取得を始める前に再確認する
