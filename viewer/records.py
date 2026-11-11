@@ -228,7 +228,9 @@ def load_official(directory):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             items = records_in_file(data)
-        except (OSError, ValueError) as e:
+        # RecursionError：`[` が何万個も続くような深い入れ子の JSON は、json.loads がこれを出す。
+        # ValueError ではないので、ここで一緒に捕まえないと、画面に traceback が出てしまう
+        except (OSError, ValueError, RecursionError) as e:
             problems.append(f"{path.name}: 読み込めない: {e}")
             continue
         for i, raw in enumerate(items):

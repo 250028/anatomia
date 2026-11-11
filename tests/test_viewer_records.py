@@ -283,6 +283,16 @@ class LoadOfficialTest(unittest.TestCase):
                 load_official(tmp)
             self.assertEqual(len(cm.exception.problems), 4)
 
+    def test_入れ子が深すぎる_JSON_も読めないファイルとして理由に入る(self):
+        # json.loads は RecursionError(ValueError ではない)を出す。traceback にせず、ほかの壊れた JSON と同じに扱う
+        with tempfile.TemporaryDirectory() as tmp:
+            (Path(tmp) / "ダミー社C.json").write_text("[" * 100_000, encoding="utf-8")
+            self.write(tmp, "ダミー社D.json", {"records": [valid(provider="ダミー社D")]})
+            with self.assertRaises(RecordError) as cm:
+                load_official(tmp)
+            self.assertEqual(len(cm.exception.problems), 1)
+            self.assertIn("ダミー社C.json: 読み込めない", cm.exception.problems[0])
+
     def test_ファイル名とレコードの_provider_が食い違うと失敗する(self):
         with tempfile.TemporaryDirectory() as tmp:
             self.write(tmp, "ダミー社D.json", {"records": [valid()]})
