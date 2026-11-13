@@ -33,8 +33,14 @@ BENCH_IN_TH_LAYOUT = """
 """
 
 
-def parse(html):
-    return parse_modelcard(html, "https://example.test/card", "tester", "2026-10-05")
+# 取る一覧は本物の名前なので、テストの間だけ、架空のモデル名に差し替える。本物の一覧での動きは TakenModelsTest で確かめる
+TEST_TAKEN = frozenset({"Gemini T0", "Gemini T1", "Gemini T2"})
+REAL_TAKEN_MODELS = google_modelcard.TAKEN_MODELS
+
+
+def parse(html, taken=TEST_TAKEN):
+    with mock.patch.object(google_modelcard, "TAKEN_MODELS", taken):
+        return parse_modelcard(html, "https://example.test/card", "tester", "2026-10-05")
 
 
 VALUE_FORMS = """
@@ -124,14 +130,35 @@ class ValueFormsTest(unittest.TestCase):
         self.assertEqual(self.skipped["値なし（—・空欄）"], 1)
 
 
-def response(status, text=""):
-    return mock.Mock(status_code=status, text=text)
+def response(status, text="", content_type="text/html", content=None):
+    """text は requests が読んだ本文、content は応答の生のバイト列。content_type に文字コードの指定がなければ、requests は ISO-8859-1 で読む。"""
+    body = text.encode("utf-8") if content is None else content
+    headers = {} if content_type is None else {"Content-Type": content_type}
+    return mock.Mock(status_code=status, text=text, content=body, headers=headers)
 
 
 class FetchTest(unittest.TestCase):
     def test_200_なら本文を返す(self):
         with mock.patch.object(google_modelcard.requests, "get", return_value=response(200, "ok")):
             self.assertEqual(google_modelcard.fetch("https://example.test/"), "ok")
+
+    def test_文字コードの指定がなければ_UTF_8_で読む(self):
+        # 指定がないと requests は ISO-8859-1 で読み、「’」が「â\x80\x99」に化ける(鈴木さんの実取得で見つかった)
+        mojibake = "Humanity’s".encode("utf-8").decode("iso-8859-1")
+        res = response(200, text=mojibake, content="Humanity’s".encode("utf-8"))
+        with mock.patch.object(google_modelcard.requests, "get", return_value=res):
+            self.assertEqual(google_modelcard.fetch("https://example.test/"), "Humanity’s")
+
+    def test_文字コードの指定があれば_requests_の読みに従う(self):
+        res = response(200, text="declared", content_type="text/html; charset=utf-8", content=b"ignored")
+        with mock.patch.object(google_modelcard.requests, "get", return_value=res):
+            self.assertEqual(google_modelcard.fetch("https://example.test/"), "declared")
+
+    def test_UTF_8_で読めなければ_黙って化けさせず止まる(self):
+        res = response(200, text="", content=b"\x80\x81\x82")
+        with mock.patch.object(google_modelcard.requests, "get", return_value=res):
+            with self.assertRaisesRegex(FetchStopped, "UTF-8"):
+                google_modelcard.fetch("https://example.test/")
 
     def test_200_以外は止まり_再試行しない(self):
         for status in (403, 429, 301, 302, 500):
@@ -167,6 +194,7 @@ class MainTest(unittest.TestCase):
             argv = ["prog", "--by", "tester", "--out", str(out)]
             exit_ = None
             with mock.patch("sys.argv", argv), \
+                    mock.patch.object(google_modelcard, "TAKEN_MODELS", TEST_TAKEN), \
                     mock.patch.object(google_modelcard.requests, "get", side_effect=fake_get), \
                     mock.patch.object(google_modelcard.time, "sleep", side_effect=lambda n: events.append(("sleep", n))):
                 try:
@@ -236,6 +264,35 @@ class MainTest(unittest.TestCase):
         _, exit_, data = self.run_main(pages)
         self.assertIn("403", str(exit_))
         self.assertIsNone(data)
+
+
+UNLISTED_LAYOUT = """
+<table>
+<thead><tr><th>Benchmark</th><th>Notes</th><th>Gemini 3.8 Flash</th><th>Gemini 3.5 Flash</th><th>Gemini 3.7 Flash</th><th>Gemini 3.1 Pro</th><th>Gemini 3 Flash</th><th>Other Co M</th></tr></thead>
+<tbody>
+<tr><th>Bench W</th><td></td><td>80.0%</td><td>70.0%</td><td>60.0%</td><td>50.0%</td><td>40.0%</td><td>85.0%</td></tr>
+</tbody></table>
+"""
+
+
+class TakenModelsTest(unittest.TestCase):
+    def test_取る一覧は_R3_の対象の2つ(self):
+        self.assertEqual(REAL_TAKEN_MODELS, {"Gemini 3.8 Flash", "Gemini 3.5 Flash"})
+
+    def test_一覧にない自社の列は取り込まず_他社の列とは別に数える(self):
+        records, skipped, _ = parse(UNLISTED_LAYOUT, taken=REAL_TAKEN_MODELS)
+        self.assertEqual({r["model"] for r in records}, {"Gemini 3.8 Flash", "Gemini 3.5 Flash"})
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 3)
+        self.assertEqual(skipped["他社モデルの列"], 1)
+
+    def test_列名の空白の違いは_そろえて判定する(self):
+        html = UNLISTED_LAYOUT.replace("<th>Gemini 3.8 Flash</th>", "<th>Gemini  3.8 Flash</th>")
+        records, _, _ = parse(html, taken=REAL_TAKEN_MODELS)
+        self.assertEqual({r["model"] for r in records}, {"Gemini 3.8 Flash", "Gemini 3.5 Flash"})
+
+    def test_一覧にある列が1つもなければ_黙って空にせず止まる(self):
+        with self.assertRaises(ValueError):
+            parse(UNLISTED_LAYOUT.replace("Gemini 3.8 Flash", "Gemini X").replace("Gemini 3.5 Flash", "Gemini Y"), taken=REAL_TAKEN_MODELS)
 
 
 class NoTableTest(unittest.TestCase):

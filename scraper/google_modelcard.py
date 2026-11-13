@@ -30,6 +30,10 @@ ROBOTS_URL = "https://deepmind.google/robots.txt"
 PROVIDER = "Google"
 # 表には他社モデル（Claude・GPT など）の列も並ぶ。取り込むのは自社モデルの値だけ（R-1 §4-6）
 OWN_MODEL_PREFIX = "Gemini"
+# 取る列は「取る一覧」で決める(R-3 §2 の対象だけ。R-1 §2 の「最新の主力モデル」の列にあるモデル)。
+# 同じカードの表には、Gemini 3.7 Flash・3.1 Pro・3 Flash の列もあるが、R-3 §3 の 1 で数えないので取らない。
+# 一覧にない列は、取り込まずに数える。足すときは企画書 §4-3 の「見直し」で行う(DeepSeek の hf_readme.py と同じ形)
+TAKEN_MODELS = frozenset({"Gemini 3.8 Flash", "Gemini 3.5 Flash"})
 MIN_INTERVAL_SEC = 3
 USER_AGENT = "Anatomia-class-project (manual run)"
 
@@ -140,8 +144,12 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
     first_model_idx = next(
         i for i, h in enumerate(header) if i > bench_idx and h not in ("", "Notes")
     )
-    models = {i: header[i] for i in range(first_model_idx, len(header))}
+    # 列名の空白(改行・連続・NBSP)の違いで、取る一覧から外れないように、空白を 1 つにそろえる
+    models = {i: " ".join(header[i].split()) for i in range(first_model_idx, len(header))}
     own = {i: m for i, m in models.items() if m.startswith(OWN_MODEL_PREFIX)}
+    taken = {i: m for i, m in own.items() if m in TAKEN_MODELS}
+    if not taken:
+        raise ValueError("取る列(取る一覧にある Gemini の列)が見つからない(ページの構造かモデル名が変わった可能性)")
 
     as_of = re.search(r"Results as of ([A-Za-z]+,? \d{4})", html)
     as_of = as_of.group(1) if as_of else None
@@ -149,6 +157,7 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
     records = []
     skipped = {
         "他社モデルの列": len(models) - len(own),
+        "除いた列（取る一覧にない）": len(own) - len(taken),
         "値なし（—・空欄）": 0,
         "料金の行（R-6 で扱う）": 0,
     }
@@ -158,7 +167,7 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
         notes = _join(*(row[i][0]["text"] + " " + row[i][0]["small"] for i in range(bench_idx + 1, first_model_idx)))
         notes = _squash(notes)
         category = _squash(" ".join(row[i][0]["text"] for i in range(bench_idx))) or None
-        for i, model in own.items():
+        for i, model in taken.items():
             cell, carried = row[i]
             # rowspan で引き継いだ値は、継続行の条件に当てはまらないので、最初の行でだけ取る
             if carried:
@@ -205,7 +214,14 @@ def fetch(url):
     res = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30, allow_redirects=False)
     if res.status_code != 200:
         raise FetchStopped(f"{url} が {res.status_code} を返した。取得を止める")
-    return res.text
+    # 応答に文字コードの指定がないと、requests は res.text を ISO-8859-1 で読み、「’」が「â\x80\x99」に化ける
+    # (鈴木さんの実取得で見つかった)。指定がないときは、生のバイト列を UTF-8 で読む。読めなければ、化けたまま進めずに止める
+    if "charset" in res.headers.get("Content-Type", "").lower():
+        return res.text
+    try:
+        return res.content.decode("utf-8")
+    except UnicodeDecodeError:
+        raise FetchStopped(f"{url} が UTF-8 で読めない。取得を止める") from None
 
 
 def check_robots(text, urls):
