@@ -469,7 +469,7 @@ class FetchReadmeTest(unittest.TestCase):
         get.assert_not_called()
 
     def test_200_以外が返ったら止まり_再試行しない(self):
-        for status in (403, 429, 500, 307):
+        for status in (403, 429, 500):
             with self.subTest(status=status):
                 with self.patch_get(readme_response(status=status)) as get:
                     with self.assertRaises(FetchStopped):
@@ -483,6 +483,78 @@ class FetchReadmeTest(unittest.TestCase):
                     with self.assertRaises(FetchStopped):
                         hf_readme.fetch_readme("deepseek-ai/X")
                 self.assertEqual(get.call_count, 1)
+
+
+CACHE_PATH = "/api/resolve-cache/models/deepseek-ai/X/" + SHA + "/README.md"
+CACHE_URL = "https://huggingface.co" + CACHE_PATH + "?%2Fdeepseek-ai%2FX%2Fresolve%2Fmain%2FREADME.md=&etag=%22e%22"
+
+
+def redirect_response(location=CACHE_URL, sha=None):
+    headers = {} if location is None else {"Location": location}
+    if sha is not None:
+        headers["X-Repo-Commit"] = sha
+    return mock.Mock(status_code=307, headers=headers, content=b"")
+
+
+class FetchReadmeRedirectTest(unittest.TestCase):
+    def fetch(self, *responses):
+        with mock.patch.object(hf_readme.requests, "get", side_effect=list(responses)) as get, \
+                mock.patch.object(hf_readme.time, "sleep") as sleep:
+            try:
+                return hf_readme.fetch_readme("deepseek-ai/X"), get, sleep
+            except FetchStopped as e:
+                return e, get, sleep
+
+    def test_307_の移動先が_resolve_cache_なら_1_回だけ追い_URL_の_sha_を版にする(self):
+        result, get, sleep = self.fetch(redirect_response(), readme_response(sha=None))
+        self.assertEqual(result, (LAYOUT, SHA))
+        self.assertEqual([c.args[0] for c in get.call_args_list], [README_URL, CACHE_URL])
+        for call in get.call_args_list:
+            self.assertIs(call.kwargs["allow_redirects"], False)
+            self.assertNotIn("Authorization", call.kwargs["headers"])
+        sleep.assert_called_once_with(hf_readme.MIN_INTERVAL_SEC)
+
+    def test_相対の_Location_でも_同じ形なら追う(self):
+        result, get, _ = self.fetch(redirect_response(location=CACHE_PATH + "?etag=e"), readme_response(sha=None))
+        self.assertEqual(result, (LAYOUT, SHA))
+        self.assertEqual(get.call_args_list[1].args[0], "https://huggingface.co" + CACHE_PATH + "?etag=e")
+
+    def test_追ってよくない移動先は_追わずに止める(self):
+        bad = {
+            "別のドメイン": "https://cdn.example.com" + CACHE_PATH,
+            "http": "http://huggingface.co" + CACHE_PATH,
+            "ポート番号つき": "https://huggingface.co:8443" + CACHE_PATH,
+            "ユーザー情報つき": "https://user@huggingface.co" + CACHE_PATH,
+            "別の組織のドメイン": "https://huggingface.co.evil.test" + CACHE_PATH,
+            "resolve-cache でない": "https://huggingface.co/deepseek-ai/X/resolve/" + SHA + "/README.md",
+            "別のリポジトリ": "https://huggingface.co/api/resolve-cache/models/deepseek-ai/Y/" + SHA + "/README.md",
+            "sha が短い": "https://huggingface.co/api/resolve-cache/models/deepseek-ai/X/" + "a" * 39 + "/README.md",
+            "README でない": "https://huggingface.co/api/resolve-cache/models/deepseek-ai/X/" + SHA + "/config.json",
+            "Location なし": None,
+        }
+        for name, location in bad.items():
+            with self.subTest(name=name):
+                result, get, sleep = self.fetch(redirect_response(location=location))
+                self.assertIsInstance(result, FetchStopped)
+                self.assertEqual(get.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_追った先が_200_以外なら止まり_さらには追わない(self):
+        for status in (403, 429, 500, 307):
+            with self.subTest(status=status):
+                result, get, _ = self.fetch(redirect_response(), readme_response(status=status, sha=None))
+                self.assertIsInstance(result, FetchStopped)
+                self.assertEqual(get.call_count, 2)
+
+    def test_版のヘッダーがあれば_URL_の_sha_と一致を確かめる(self):
+        for first, second in ((SHA, None), (None, SHA)):
+            with self.subTest(first=first, second=second):
+                result, _, _ = self.fetch(redirect_response(sha=first), readme_response(sha=second))
+                self.assertEqual(result, (LAYOUT, SHA))
+        for first, second in (("b" * 40, None), (None, "b" * 40), (SHA, "b" * 40), ("main", None)):
+            with self.subTest(first=first, second=second):
+                result, _, _ = self.fetch(redirect_response(sha=first), readme_response(sha=second))
+                self.assertIsInstance(result, FetchStopped)
 
 
 class RepoIdsTest(unittest.TestCase):
