@@ -25,13 +25,19 @@ from scraper.google_modelcard import MIN_INTERVAL_SEC, USER_AGENT, FetchStopped
 from scraper.values import NO_VALUE, clean_value
 
 # 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
-# 取得元の版（Preview・正式版・V4.1-Flash）は R-3 で決める（R-1 §2）。決まるまで空にしておく
-REPO_IDS = []
+# 取得元の版は R-3 §2 のとおり、V4-Pro は正式版(-0813。Preview の値は使わない)と V4.1-Flash。
+# 2026-11-04 に、メンバーがブラウザで実在と License(MIT)を確かめた(README の表の形は、V4.1-Flash は自動翻訳された表示で確認)
+REPO_IDS = ["deepseek-ai/DeepSeek-V4-Pro-0813", "deepseek-ai/DeepSeek-V4.1-Flash"]
 OFFICIAL_ORG = "deepseek-ai"
 README_URL = "https://huggingface.co/{repo_id}/resolve/main/README.md"
 
 PROVIDER = "DeepSeek"
 OWN_MODEL_PREFIX = "DeepSeek-"
+# 比較表では、自社の列が略称(DS-V4.1-Flash)で書かれることがある
+ALIAS_PREFIX = "DS-"
+# 取る列は「取る一覧」で決める(R-3 §2 の対象だけ。正式版は README の列名 -0813 で書く)。
+# 一覧にない列(Preview・Base・対象外のモデル・README に新しく増えた列)は、取り込まずに数える。足すときは企画書 §4-3 の「見直し」で行う
+TAKEN_MODELS = frozenset({"DeepSeek-V4-Pro-0813", "DeepSeek-V4.1-Flash"})
 
 _VALUE = re.compile(r"-?\d+(?:\.\d+)?%?")
 
@@ -76,14 +82,44 @@ def _tables(text):
     return [b for b in blocks if len(b) >= 2 and all(_SEPARATOR_CELL.fullmatch(c) for c in b[1])]
 
 
+def _own_name(column):
+    """列見出しから自社モデルの名前を返す(略称は DeepSeek- に直す)。自社の列でなければ None。"""
+    if column.startswith(OWN_MODEL_PREFIX):
+        return column
+    if column.startswith(ALIAS_PREFIX):
+        return OWN_MODEL_PREFIX + column[len(ALIAS_PREFIX):]
+    return None
+
+
+def _is_taken_column(column):
+    name = _own_name(column)
+    if name is None:
+        return False
+    # 列名には推論モードが付くことがあるので、モードを外した名前で判定する
+    model, _ = _split_mode(name)
+    return model in TAKEN_MODELS
+
+
+def _split_cell(cell, condition):
+    """「a / b」のセルは、見出しの括弧の「x / y」と同じ数のときだけ、条件ごとの値に分ける。分けられなければ None。"""
+    parts = [clean_value(p) for p in cell.split(" / ")]
+    if len(parts) == 1:
+        return [(parts[0], condition)]
+    conditions = condition.split(" / ") if condition else []
+    if len(conditions) != len(parts):
+        return None
+    return list(zip(parts, conditions))
+
+
 def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     tables = _tables(text)
     if not tables:
         raise ValueError("Markdown の表が見つからない(README の構造が変わった可能性)")
-    # 表が複数あるときは、最初の自社の列を持つ表だけを読む。残りは数えて知らせる(黙って捨てない)
-    own_tables = [t for t in tables if any(name.startswith(OWN_MODEL_PREFIX) for name in t[0])]
+    # 取る列(取る一覧にある自社の列)を持つ表のうち、最初の 1 つだけを読む。残りは数えて知らせる(黙って捨てない)
+    own_tables = [t for t in tables if any(_is_taken_column(c) for c in t[0])]
+    not_taken_tables = [t for t in tables if t not in own_tables and any(_own_name(c) for c in t[0])]
     if not own_tables:
-        raise ValueError("DeepSeek- で始まる列を持つ表が見つからない(README の構造が変わった可能性)")
+        raise ValueError("取る列(DeepSeek- か DS- で始まり、取る一覧にある列)を持つ表が見つからない(README の構造が変わった可能性)")
     table = own_tables[0]
     header, rows = table[0], table[2:]
     for row in rows:
@@ -92,27 +128,47 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     skipped = Counter()
     if len(own_tables) > 1:
         skipped["読まなかった表（自社の列あり）"] = len(own_tables) - 1
+    if not_taken_tables:
+        skipped["読まなかった表（取る一覧の列がない）"] = len(not_taken_tables)
     body = []
     for row in rows:
         if all(c == "" for c in row[1:]):
             skipped["見出し行"] += 1
             continue
+        # † は README ごとに意味が違う(社内テスト、テキストのみの部分集合など)。名前のどこかに付いた行(括弧の前や太字の中を含む)は、意味を確かめるまで取らない
+        if "†" in row[0]:
+            skipped["名前に † が付いた行（社内テストなど。要確認）"] += 1
+            continue
         body.append(row)
     records = []
     unreadable = []
-    for i, name in enumerate(header):
-        if name.startswith(OWN_MODEL_PREFIX):
-            model, mode = _split_mode(name)
-            for row in body:
-                value = clean_value(row[i])
+    for i, column in enumerate(header):
+        name = _own_name(column)
+        if name is None:
+            continue
+        model, mode = _split_mode(name)
+        if model not in TAKEN_MODELS:
+            skipped["除いた列（取る一覧にない）"] += 1
+            continue
+        for row in body:
+            benchmark, condition, unit = _split_benchmark(row[0])
+            # 値に付いた † も、名前に付いた場合と同じく意味が分からないので、外して読まずに「要確認」に出す(raw_value には元のセルが残る)
+            if "†" in row[i]:
+                unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
+                continue
+            cells = _split_cell(row[i], condition)
+            if cells is None:
+                unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
+                continue
+            for value, cell_condition in cells:
                 if value in NO_VALUE:
                     skipped["値なし（—・空欄）"] += 1
                     continue
                 if not _VALUE.fullmatch(value):
                     unreadable.append({"model": model, "mode": mode, "benchmark": row[0], "raw_value": row[i]})
                     continue
-                benchmark, condition, unit = _split_benchmark(row[0])
-                # 出力の形は暫定。§3-3【案】が決まったら合わせる(google_modelcard.py の records と項目をそろえている)
+                # キー名は §3-3(Q-10 で決定)と google_modelcard.py の records に合わせている。
+                # 任意の model_type・benchmark_version・as_of は、まだ出さない
                 records.append({
                     "provider": PROVIDER,
                     "model": model,
@@ -120,7 +176,7 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
                     "benchmark": benchmark,
                     "score": float(value.rstrip("%")),
                     "unit": "%" if value.endswith("%") else unit,
-                    "condition": condition,
+                    "condition": cell_condition,
                     "raw_value": row[i],
                     "source_url": source_url,
                     "sha": sha,
@@ -162,14 +218,15 @@ def main():
     args = ap.parse_args()
 
     if not REPO_IDS:
-        sys.exit("取得するリポジトリが決まっていない(REPO_IDS が空。R-3 で決める)")
+        sys.exit("取得するリポジトリがない(REPO_IDS が空)")
     today = date.today().isoformat()
     all_records = []
     try:
         for repo_id in REPO_IDS:
             time.sleep(MIN_INTERVAL_SEC)
             text, sha = fetch_readme(repo_id)
-            url = f"https://huggingface.co/{repo_id}"
+            # 照合する人が、取得した版(sha)の README をブラウザでそのまま開けるようにする(企画書 §3-3 の出典URL)
+            url = f"https://huggingface.co/{repo_id}/blob/{sha}/README.md"
             records, skipped, unreadable = parse_readme(text, url, args.by, today, sha)
             print(f"{url}: {len(records)} 件。取り込まなかった: {dict(skipped)}", file=sys.stderr)
             for u in unreadable:
