@@ -1,7 +1,8 @@
 """Hugging Face の公式組織の README.md（Markdown の表）から、自社モデルのスコアを取り出す。
 
-README は、resolve の URL から生ファイルとして 1 回だけ取る（R-2 §5 の hf_hub_download と同じファイル）。
-版（sha）は、同じ応答の X-Repo-Commit ヘッダーから取る（huggingface_hub も、この応答のヘッダーから取っている）。
+README は、resolve の URL から生ファイルとして取る（R-2 §5 の hf_hub_download と同じファイル）。resolve が 307 を返したときは、
+移動先が同じ huggingface.co の resolve-cache の README（取得するリポジトリ・40 桁の sha つき）のときだけ、その 1 回を追う（企画書 §6-3）。
+版（sha）は、取得した URL に入っている sha とし、X-Repo-Commit ヘッダーがあれば、一致を確かめる。
 ページを描画した HTML には、マージされていない PR の第三者の値が混ざるため使わない（R-1 §4-1）。
 huggingface_hub と API は使わない：hf_hub_download は 429 でも内部で再試行し、企画書 §6-3 の「429 が返ったら止める」と
 合わないため。requests で 1 回だけ取り、200 以外が返ったら止める（Google 側と同じ）。
@@ -18,6 +19,7 @@ import sys
 import time
 from collections import Counter
 from datetime import date
+from urllib.parse import urljoin, urlsplit
 
 import requests
 
@@ -190,23 +192,63 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
 _SHA = re.compile(r"[0-9a-f]{40}")
 
 
+_RESOLVE_CACHE_PATH = re.compile(r"/api/resolve-cache/models/(?P<repo>[^/]+/[^/]+)/(?P<sha>[0-9a-f]{40})/README\.md")
+
+
+def _request(url):
+    # 再試行はしない。token は付けない（メンバー個人の token を使わない）。
+    # リダイレクトは自動では追わない：移動先は R-2 の判定を受けていないサイトかもしれず、事後の確認では触れること自体を防げない。
+    # 追うのは、_redirect_target が確かめた移動先の 1 回だけ（企画書 §6-3）
+    return requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30, allow_redirects=False)
+
+
 def _get(url):
-    # 再試行はしない。403・429 などが返ったら止める（回避しない）。token は付けない（メンバー個人の token を使わない）。
-    # リダイレクトは追わない：移動先は R-2 の判定を受けていないサイトかもしれず、事後の確認では触れること自体を防げない
-    res = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=30, allow_redirects=False)
+    # 403・429 などが返ったら止める（回避しない）
+    res = _request(url)
     if res.status_code != 200:
         raise FetchStopped(f"{url} が {res.status_code} を返した。取得を止める")
     return res
 
 
+def _redirect_target(repo_id, res, url):
+    """307 の移動先が、同じ huggingface.co の resolve-cache の README（取得するリポジトリ）なら、その URL と sha を返す。それ以外は止める。"""
+    location = res.headers.get("Location")
+    if not isinstance(location, str):
+        raise FetchStopped(f"{url} が 307 を返したが、移動先(Location)が読めない。取得を止める")
+    target = urljoin(url, location)
+    parts = urlsplit(target)
+    m = _RESOLVE_CACHE_PATH.fullmatch(parts.path)
+    # netloc を文字列で比べるので、ユーザー情報（user@）やポート番号つきの URL は通らない
+    if parts.scheme != "https" or parts.netloc != "huggingface.co" or not m or m["repo"] != repo_id:
+        raise FetchStopped(f"{url} が 307 を返したが、移動先 {target!r} は追ってよい形ではない。取得を止める")
+    return target, m["sha"]
+
+
 def fetch_readme(repo_id):
-    """README.md の本文と、その応答が示す版（sha）を返す。README を 1 回だけ取り、200 以外なら止める。"""
+    """README.md の本文と、版（sha）を返す。403・429 など 200・307 以外は止める。307 は、追ってよい移動先のときだけ 1 回追う。"""
     if repo_id.split("/")[0] != OFFICIAL_ORG:
         raise FetchStopped(f"{repo_id} は {OFFICIAL_ORG} のリポジトリではない。取得を止める")
-    res = _get(README_URL.format(repo_id=repo_id))
-    sha = res.headers.get("X-Repo-Commit")
-    if not isinstance(sha, str) or not _SHA.fullmatch(sha):
-        raise FetchStopped(f"{repo_id} の応答に版(X-Repo-Commit)が無いか、読めない({sha!r})。取得を止める")
+    url = README_URL.format(repo_id=repo_id)
+    first = _request(url)
+    if first.status_code == 307:
+        target, sha = _redirect_target(repo_id, first, url)
+        time.sleep(MIN_INTERVAL_SEC)
+        res = _get(target)
+        responses = (first, res)
+    elif first.status_code == 200:
+        res, sha, responses = first, None, (first,)
+    else:
+        raise FetchStopped(f"{url} が {first.status_code} を返した。取得を止める")
+    header_shas = [r.headers.get("X-Repo-Commit") for r in responses if r.headers.get("X-Repo-Commit") is not None]
+    for h in header_shas:
+        if not isinstance(h, str) or not _SHA.fullmatch(h):
+            raise FetchStopped(f"{repo_id} の応答の版(X-Repo-Commit)が読めない({h!r})。取得を止める")
+    if sha is None:
+        if not header_shas:
+            raise FetchStopped(f"{repo_id} の応答に版(X-Repo-Commit)が無い。取得を止める")
+        sha = header_shas[0]
+    if any(h != sha for h in header_shas):
+        raise FetchStopped(f"{repo_id} の版(X-Repo-Commit)が、取得した URL の版({sha})と違う。取得を止める")
     # 本文はメモリ上だけで持ち、ファイルに残さない（企画書 §3-2 ①・§6-3）
     return res.content.decode("utf-8"), sha
 
