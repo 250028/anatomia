@@ -1,0 +1,18 @@
+# Anatomia の画面(viewer/app.py)の Streamlit の設定。`streamlit run viewer/app.py` を、リポジトリのルートで実行したときに読まれる
+# (Streamlit は、実行したディレクトリの .streamlit/config.toml を読む。1.67.0 の streamlit/file_util.py で確かめた)。
+# 値の既定と意味は、1.67.0 の `streamlit config show` で確かめた。
+
+[server]
+# 自分の PC だけで待ち受ける(既定はすべての口で待ち受け、ほかの PC からも開ける)。企画書 §6-4【案】の公開範囲の行(#23 で合意)の「メンバーの PC のローカルサーバーだけで動かし、公開しない」「ほかの端末(LAN を含む)からのアクセスは考えない」に合わせる
+address = "127.0.0.1"
+# 起動したときに、ブラウザを自動で開かない(既定は PC によって変わるので、どの PC でも同じ動きにそろえる)
+headless = true
+
+[browser]
+# 利用状況を外(Streamlit 社)へ送らない(既定は送る)。画面からネットワークへ出ないようにする
+gatherUsageStats = false
+
+[theme]
+# 文字の基準の大きさ(px)。既定の 16px から一段階大きくする(水戸さんの「少し見えにくい」への対応。2026-11-11)。
+# 表(st.dataframe)の文字・行の高さ・余白も、この比率(18/16)で大きくなる(1.67.0 の同梱の画面側のコードで確かめた)
+baseFontSize = 18
