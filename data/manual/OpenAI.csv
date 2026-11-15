@@ -1,0 +1,10 @@
+モデル名,モデルの種類,推論モード,ベンチマーク名,ベンチマークの版・種類,スコア,単位,測定条件,取得元の表記,出典URL,取得日,取得者,READMEの版(sha),備考
+GPT-6 Astra,,,GPQA Diamond,,96.0,%,各思考量の設定で得られたスコアのうち最大値,96.0%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「学術」
+GPT-5.6 Sol,,,GPQA Diamond,,94.6,%,各思考量の設定で得られたスコアのうち最大値,94.6%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「学術」
+GPT-6 Astra,,,Humanity's Last Exam,,57.2,%,ツールあり。各思考量の設定で得られたスコアのうち最大値,57.2%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「学術」。GPT-5.6 Sol の欄は「-」(値なし)のため行を作っていない
+GPT-6 Astra,,,Terminal-Bench,4.0,57.9,%,各思考量の設定で得られたスコアのうち最大値,57.9%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「コーディング」
+GPT-5.6 Sol,,,Terminal-Bench,4.0,37.3,%,各思考量の設定で得られたスコアのうち最大値,37.3%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「コーディング」。ページの脚注2: Sol は OpenAI API・ChatGPT Codex・ChatGPT Work で使えるバージョン
+GPT-6 Astra,,,BrowseComp,,91.5,%,各思考量の設定で得られたスコアのうち最大値,91.5%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「専門業務」
+GPT-5.6 Sol,,,BrowseComp,,90.4,%,各思考量の設定で得られたスコアのうち最大値,90.4%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「専門業務」
+GPT-6 Astra,,,OSWorld,2.0,72.6,%,v2026.08.08・オフラインセット・部分スコア。各思考量の設定で得られたスコアのうち最大値,72.6%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「コンピュータの使用」。ページの脚注3: オフラインセットは、インターネット接続なしで動く元の OSWorld V2 の一部
+GPT-5.6 Sol,,,OSWorld,2.0,65.7,%,v2026.08.08・オフラインセット・部分スコア。各思考量の設定で得られたスコアのうち最大値,65.7%,https://openai.com/ja-JP/index/gpt-6-astra/,2026-11-11,蒲山,,ページ内の表「コンピュータの使用」。ページの脚注2・3(Sol のバージョンと、オフラインセット)
