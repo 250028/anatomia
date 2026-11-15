@@ -237,39 +237,11 @@ def pair_at(grid, row_index, column_label, transposed=False):
 
 def cell_position(grid, row, column, transposed=False):
     """(`ModelRow`, `BenchmarkColumn`) のセルが、その向きの表(`table_rows`・`transposed_rows`)の
-    何行目・何列目にあるか(どちらも 0 から)。`pair_at` の逆。画面がセルに色を付けるときに使う。"""
+    何行目・何列目にあるか(どちらも 0 から)。`pair_at` の逆。画面が未公表のセルに色を付けるときに使う。"""
     i, j = grid.rows.index(row), grid.columns.index(column)
     if transposed:
         return 1 + j, 1 + i  # 1 行目は提供企業の行、1 列目はベンチマーク名の列
     return i, len(table_header(grid)) - len(grid.columns) + j
-
-
-# ---- ベンチマークごとの最大の値(画面で赤い文字にするセル) ----
-# 企画書 §2-4 原則 1「同じベンチマークを公表したモデル同士の相対比較で示す」に沿う目印。順位・総合スコアではない。
-# 誤解を生まないための歯止め:
-# - 比べるのは同じ列(ベンチマーク名＋版)の中だけ。単位が混ざる列(% と Elo など)は比べず、目印を付けない
-# - その列で値のあるモデルが MIN_MODELS_FOR_HIGHEST 以上のときだけ付ける(1 つしか無い値を「最大」として目立たせない)
-# - 1 つのセルに測定条件の違う値が並ぶときは、セルの中の最大の値で比べ、セル全体に付ける
-# - 測定条件の付いた値(※)も比べる対象に含める(※ はそのまま出し、比べてよいかは利用者が判断する。§2-4 原則 3)
-# - 値が小さいほど良いベンチマークかどうかは、データからは分からない(向きのキーが無く、決め方は未決)。
-#   機械的に「数値が最大」を選ぶだけで、「最良」「1 位」の意味は持たせない
-MIN_MODELS_FOR_HIGHEST = 2
-
-
-def highest_cells(grid):
-    """ベンチマークの列ごとに、値が最大のセルの (`ModelRow`, `BenchmarkColumn`) の集合を返す。
-    同じ値で並んだときは、並んだ全部。未公表のセルは関係しない。条件は上の注のとおり。"""
-    found = set()
-    for column in grid.columns:
-        cells = [(row, grid.cell_at(row, column)) for row in grid.rows]
-        published = [(row, cell) for row, cell in cells if cell.is_published]
-        units = {r.unit for _, cell in published for r in cell.records}
-        if len(published) < MIN_MODELS_FOR_HIGHEST or len(units) != 1:
-            continue
-        best = {row: max(r.score for r in cell.records) for row, cell in published}
-        top = max(best.values())
-        found |= {(row, column) for row, value in best.items() if value == top}
-    return found
 
 
 def prefers_transposed(grid):

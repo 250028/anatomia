@@ -31,7 +31,6 @@ TIMEOUT = 60
 SKIP_REASON = "streamlit が入っていない(画面のテストは skip)"
 MARK = "—"  # 未公表のセルに出す記号(viewer/app.py の NOT_PUBLISHED_MARK)
 GREY = "#9aa0a6"  # 未公表の記号の文字色(viewer/app.py の NOT_PUBLISHED_COLOR)
-RED = "color: #e5484d; font-weight: bold"  # 最大の値の文字(viewer/app.py の HIGHEST_STYLE)
 
 
 def rerun(at, *args):
@@ -190,7 +189,7 @@ class DummyDataTest(unittest.TestCase):
         self.assertIn("自己申告", parts[1].value)
         self.assertEqual(parts[3].value, "**選んだセルの詳細**")  # 詳細は表の下
         self.assertIn("セルを選ぶと", parts[4].value)
-        self.assertIn("赤い太字", parts[5].value)  # 凡例の全文は本文のいちばん下
+        self.assertIn("未公表", parts[5].value)  # 凡例の全文は本文のいちばん下
         self.assertEqual(len(self.at.expander), 0)
 
     def test_セルを選ぶと_詳細は表と凡例の間に出る(self):
@@ -199,7 +198,7 @@ class DummyDataTest(unittest.TestCase):
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]
         self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "dataframe", "caption"])
         self.assertEqual(list(parts[4].value.columns)[:1], ["モデル"])
-        self.assertIn("赤い太字", parts[5].value)
+        self.assertIn("未公表", parts[5].value)
 
     def test_メニューは最初は閉じる設定(self):
         # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
@@ -247,37 +246,24 @@ class DummyDataTest(unittest.TestCase):
         last = self.at.main[len(self.at.main.children) - 1]
         self.assertEqual(last.type, "caption")
         text = last.value
-        self.assertFalse(any("未公表" in c.value or "赤い太字" in c.value for c in self.at.sidebar.caption))
+        self.assertFalse(any("未公表" in c.value for c in self.at.sidebar.caption))
         self.assertIn(f"「{MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）", text)
         self.assertIn("「※」：測定条件", text)
-        self.assertIn("赤い太字：そのベンチマークで、公表された値のうち最大のもの", text)
-        for word in ("最良", "1 位", "最も強い"):
+        for word in ("最良", "1 位", "最も強い", "赤", "太字", "最大"):  # 最大の値の強調は MVP から外した(凡例にも出さない)
             self.assertNotIn(word, text)
 
-    def red_cells(self, first_column):
-        (table,) = tables(self.at, first_column)
-        cells = cell_styles(main_element(self.at)).get(RED, set())
-        return table, {(table.iat[r, 0] if first_column == "ベンチマーク" else table.iat[r, 1], table.columns[c]) for r, c in cells}, cells
+    def assert_only_not_published_is_styled(self):
+        """表のセルに付く文字の色・太さは、未公表の灰色だけ。最大の値の強調(赤い太字)は付けない。"""
+        styles = cell_styles(main_element(self.at))
+        self.assertEqual(set(styles) - {f"color: {GREY}"}, set())
+        self.assertFalse(any("bold" in declaration for declaration in styles))
 
-    def test_ベンチマークごとの最大の値だけ赤い太字(self):
-        table, _, cells = self.red_cells("提供企業")
-        expected = {
-            (row_index_of(table, "Model-A1", "Reasoning", "High"), list(table.columns).index("Bench-X")),
-            (row_index_of(table, "Model-B2", "（なし）", "Max"), list(table.columns).index("Bench-Y")),
-            (row_index_of(table, "Model-B1", "（なし）", "（なし）"), list(table.columns).index("Bench-Z")),
-        }
-        self.assertEqual(cells, expected)
-        # 公表が 1 つだけの列(Bench-V 2.1・Bench-W)と、未公表のセルは赤くしない
-        self.assertFalse(any(table.columns[c] in ("Bench-V 2.1", "Bench-W") for _, c in cells))
-        self.assertFalse(any(table.iat[r, c] == MARK for r, c in cells))
+    def test_最大の値を強調しない_付くのは未公表の灰色だけ(self):
+        self.assert_only_not_published_is_styled()
 
-    def test_向きを入れ替えても同じセルが赤い太字(self):
+    def test_向きを入れ替えても_最大の値を強調しない(self):
         self.transpose()
-        table, _, cells = self.red_cells("ベンチマーク")
-        named = {(table.iat[r, 0], table.columns[c]) for r, c in cells}
-        self.assertEqual(named, {
-            ("Bench-X", "Model-A1 (Reasoning / High)"), ("Bench-Y", "Model-B2 (Max)"), ("Bench-Z", "Model-B1"),
-        })
+        self.assert_only_not_published_is_styled()
 
     def test_測定条件だけが違う値は_1_つのセルに並び_印が付く(self):
         table = main_table(self.at)

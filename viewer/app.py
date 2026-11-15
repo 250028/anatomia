@@ -40,7 +40,6 @@ from viewer.grid import (  # noqa: E402(上の sys.path の後で import する)
     companies,
     detail_items,
     filter_by_company,
-    highest_cells,
     label_conflicts,
     last_retrieved_by_company,
     pair_at,
@@ -75,11 +74,6 @@ LIMITS = [
 NOT_PUBLISHED_MARK = "—"
 # 未公表の記号の文字色。値のある文字より薄くする(明るい背景でも暗い背景でも読める灰色)。値のあるセルの濃淡はしない
 NOT_PUBLISHED_COLOR = "#9aa0a6"
-
-# ベンチマークごとに、公表された値のうち最大のもの(grid.highest_cells)の文字の色と太さ。
-# 水戸さんの依頼(2026-11-11)。明るい背景でも暗い背景(ダークテーマ)でも読める赤を 1 つ選んだ。背景色は付けず、
-# 色だけに頼らないように太字にもする(1.67.0 の画面側は、Styler の color・font-weight を表のセルに使う)
-HIGHEST_STYLE = "color: #e5484d; font-weight: bold"
 
 MODELS_AS_ROWS = "モデルを行に"
 BENCHMARKS_AS_ROWS = "ベンチマークを行に"
@@ -175,17 +169,13 @@ def styled_table(header, rows, grid, transposed):
     """表(見出しと行)を、セルの文字色を付けた pandas の Styler にする。色は位置(行・列)で付け、値の文字では判断しない
     (企業名やモデル名が記号と同じ文字でも、取り違えないため)。
     - 未公表のセル：薄い灰色
-    - ベンチマークごとに、公表された値のうち最大のセル(grid.highest_cells)：赤い太字
-    ほかのセル(値のあるセル)には色を付けない(値の大きさによる濃淡はしない)。"""
+    値のあるセルには色を付けない(値の大きさによる強調・濃淡はしない)。"""
     styles = [["" for _ in header] for _ in rows]
-    highest = highest_cells(grid)
     for row in grid.rows:
         for column in grid.columns:
             r, c = cell_position(grid, row, column, transposed)
             if not grid.cell_at(row, column).is_published:
                 styles[r][c] = f"color: {NOT_PUBLISHED_COLOR}"
-            elif (row, column) in highest:
-                styles[r][c] = HIGHEST_STYLE
     frame = pd.DataFrame(rows, columns=header)
     return frame.style.apply(lambda _: pd.DataFrame(styles, index=frame.index, columns=frame.columns), axis=None)
 
@@ -326,10 +316,8 @@ else:
         )
 
 # ---- 9. 凡例(本文のいちばん下。全文。メニューには置かない〔同じ文を 2 か所に置かない〕) ----
-# メニューが閉じていても、記号と赤い太字の意味が分かるように本文に出す(水戸さんの指示。2026-11-11)
+# メニューが閉じていても、記号の意味が分かるように本文に出す(水戸さんの指示。2026-11-11)
 st.caption(
     f"「{NOT_PUBLISHED_MARK}」：未公表（その会社が、この値を公表していない。低いスコアという意味ではありません）。  \n"
-    "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。  \n"
-    "赤い太字：そのベンチマークで、公表された値のうち最大のもの（2 つ以上のモデルが公表し、単位がそろうときだけ）。"
-    "値が小さいほど良いベンチマークや、測定条件が違う値（※）があるときは、いちばん良い結果とは限りません。"
+    "「※」：測定条件が付いた値。条件は、セルを選ぶと詳細に出ます。"
 )
