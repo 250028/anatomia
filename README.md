@@ -21,6 +21,6 @@ AIモデル分析サービス
 | 場所 | 入っているもの（正とする文書） |
 | --- | --- |
 | [`scraper/`](scraper/) | 取得スクリプトと、正式データの形への変換（企画書 §6-1・§6-3・§3-3） |
-| [`tests/`](tests/) | `scraper/` のテスト（実行のしかたは [`docs/setup.md`](docs/setup.md)） |
+| [`tests/`](tests/) | テスト（実行のしかたは [`docs/setup.md`](docs/setup.md)） |
 | [`data/manual/`](data/manual/) | 手入力の値の入れ物（企画書 §3-3） |
 | [`requirements.txt`](requirements.txt) | Python のライブラリの一覧 |
