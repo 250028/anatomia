@@ -303,3 +303,33 @@ class NoTableTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class BenchmarkNameTest(unittest.TestCase):
+    """名前と版を分ける対応表(企画書 §3-3。#51 の相談の暫定のそろえ方)。表にない名前は、推測で分けずにそのまま持つ。"""
+
+    def parse_with(self, names):
+        with mock.patch.object(google_modelcard, "BENCHMARK_NAMES", names):
+            return parse(CATEGORY_LAYOUT)[0]
+
+    def test_対応表にある名前は_名前と版に分ける(self):
+        records = self.parse_with({"Bench A 2.1": ("Bench A", "2.1")})
+        a = [r for r in records if r["model"] == "Gemini T1" and r["benchmark"] == "Bench A"]
+        self.assertEqual([r["benchmark_version"] for r in a], ["2.1"])
+        self.assertEqual(pick(records, "Gemini T1", "Bench A 2.1"), [])
+
+    def test_対応表にない名前は_そのまま持ち_版は_null(self):
+        records = self.parse_with({})
+        b = pick(records, "Gemini T1", "Bench A 2.1")
+        self.assertEqual(len(b), 1)
+        self.assertIsNone(b[0]["benchmark_version"])
+        self.assertTrue(all("benchmark_version" in r for r in records))
+
+    def test_本物の対応表は_ほかの会社と同じ名前と版にそろえる(self):
+        names = google_modelcard.BENCHMARK_NAMES
+        self.assertEqual(names["DeepSWE v1.1"], ("DeepSWE", "v1.1"))
+        self.assertEqual(names["Terminal-bench 4.0"], ("Terminal-Bench", "4.0"))
+        self.assertEqual(names["Terminal-bench 2.1"], ("Terminal-Bench", "2.1"))
+        self.assertEqual(names["OSWorld-2.0"], ("OSWorld", "2.0"))
+        self.assertEqual(names["Humanity\u2019s Last Exam"], ("Humanity's Last Exam", None))
+
