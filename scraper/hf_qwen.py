@@ -25,9 +25,11 @@ from scraper.google_modelcard import MIN_INTERVAL_SEC, FetchStopped, unmapped_ve
 from scraper.values import NO_VALUE, clean_value
 
 # 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
-# 取得元は Qwen/Qwen3.8-27B の 1 つを予定している（R-1 §2 の Qwen の行・R-3 §2-1 の Qwen の行。License は R-2 §3-3 で Apache 2.0）。
-# 入れるのは別のコミットで行う（main は、空なら取得せずに止まる）
-REPO_IDS = []
+# R-1 §2 の Qwen の行・R-3 §2-1 の Qwen の行による(Qwen3.8 系と Qwen3.6-27B を、このカードの列から取る前提で数えている)。
+# License は R-2 §3-3 で Apache 2.0(README 先頭の YAML)。Qwen3.6-27B 自身のカードがあればそちらを正とする(R-3 §2-1)が、有無は確かめていない。
+# 実際に取るのはメンバーが手で実行するときだけで、エージェントは実行しない(AGENTS.md 禁則 3)。#47・#48 の後の実取得には、
+# リーダーの改めての判断が要る(R-2 §3-3 の「実取得の判断」の条件 1)
+REPO_IDS = ["Qwen/Qwen3.8-27B"]
 OFFICIAL_ORG = "Qwen"
 
 PROVIDER = "Qwen"

@@ -308,6 +308,8 @@ class RepoIdsTest(unittest.TestCase):
         for repo_id in hf_qwen.REPO_IDS:
             self.assertEqual(repo_id.split("/")[0], hf_qwen.OFFICIAL_ORG)
 
+    def test_取得先は_R_3_の_Qwen3_8_27B_のカード(self):
+        self.assertEqual(hf_qwen.REPO_IDS, ["Qwen/Qwen3.8-27B"])
 
 
 class MainTest(unittest.TestCase):
