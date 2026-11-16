@@ -522,6 +522,7 @@ class FetchReadmeRedirectTest(unittest.TestCase):
     def test_追ってよくない移動先は_追わずに止める(self):
         bad = {
             "別のドメイン": "https://cdn.example.com" + CACHE_PATH,
+            "スキームを省いた別のホスト": "//evil.test" + CACHE_PATH,
             "http": "http://huggingface.co" + CACHE_PATH,
             "ポート番号つき": "https://huggingface.co:8443" + CACHE_PATH,
             "ユーザー情報つき": "https://user@huggingface.co" + CACHE_PATH,
@@ -538,6 +539,15 @@ class FetchReadmeRedirectTest(unittest.TestCase):
         for name, location in bad.items():
             with self.subTest(name=name):
                 result, get, sleep = self.fetch(redirect_response(location=location))
+                self.assertIsInstance(result, FetchStopped)
+                self.assertEqual(get.call_count, 1)
+                sleep.assert_not_called()
+
+    def test_307_以外の移動は_移動先が同じ形でも_追わずに止める(self):
+        for status in (301, 302, 303, 308):
+            with self.subTest(status=status):
+                first = mock.Mock(status_code=status, headers={"Location": CACHE_URL}, content=b"")
+                result, get, sleep = self.fetch(first)
                 self.assertIsInstance(result, FetchStopped)
                 self.assertEqual(get.call_count, 1)
                 sleep.assert_not_called()
