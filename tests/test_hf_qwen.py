@@ -156,7 +156,7 @@ class RecordsFromRowsTest(unittest.TestCase):
             row(["Doing things", "Bench E"], "--", "—", "1", "2", "3"),
         )
         self.assertEqual(records, [])
-        self.assertEqual(skipped["値なし（--・空欄）"], 2)
+        self.assertEqual(skipped["値なし（-- などの記号）"], 2)
         self.assertEqual(unreadable, [])
 
     def test_読めない値と脚注の記号つきの値は取らず要確認に出す(self):
@@ -182,6 +182,15 @@ class RecordsFromRowsTest(unittest.TestCase):
         self.assertEqual([r["source_category"] for r in records], ["Area One", "Area One"])
         self.assertEqual(skipped["領域の見出しの行"], 1)
         self.assertEqual([(u["model"], u["benchmark"]) for u in unreadable], [("Qwen3.8-27B", "Bench Empty"), ("Qwen3.6-27B", "Bench Empty")])
+
+    def test_空のセルは値なしとして数えず_要確認に出す(self):
+        # 空のセル(lines が空)は README に無い形。値なしの記号(--)とは分けて、値なしの数に入れない
+        records, skipped, unreadable = build(
+            row(["Doing things", "Bench E"], [], "16.75", "1", "2", "3"),
+        )
+        self.assertEqual([(r["model"], r["score"]) for r in records], [("Qwen3.6-27B", 16.75)])
+        self.assertEqual(unreadable, [{"model": "Qwen3.8-27B", "mode": None, "benchmark": "Bench E", "raw_value": ""}])
+        self.assertEqual(skipped["値なし（-- などの記号）"], 0)
 
     def test_空のラベルか空の値がある組は_取らず要確認に出す(self):
         # 空の metric-label・metric-value の <div> は、_CellLinesParser が空の文字列として残す
@@ -227,7 +236,7 @@ class RecordsFromRowsTest(unittest.TestCase):
             row(["Doing things", "Bench C"], ["Pass@1", "10.5", "Score", "20.5"], "--", "1", "2", "3"),
         )
         self.assertEqual(len(records), 2)
-        self.assertEqual(skipped["値なし（--・空欄）"], 1)
+        self.assertEqual(skipped["値なし（-- などの記号）"], 1)
         self.assertEqual(unreadable, [])
 
     def test_形が想定と違えば止める(self):
@@ -304,7 +313,7 @@ class ParseReadmeTest(unittest.TestCase):
         self.assertEqual(skipped["領域の見出しの行"], 3)
         self.assertEqual(skipped["他社モデルの列"], 4)
         self.assertEqual(skipped["除いた列（取る一覧にない）"], 2)
-        self.assertEqual(skipped["値なし（--・空欄）"], 1)
+        self.assertEqual(skipped["値なし（-- などの記号）"], 1)
 
     def test_太字のタグは値に残らず_raw_value_はセルの文字をつなぐ(self):
         records, _, _ = self.parse()
@@ -360,6 +369,15 @@ class ParseReadmeTest(unittest.TestCase):
         records, _, unreadable = self.parse(text)
         self.assertEqual({r["source_category"] for r in records if r["benchmark"] == "Bench Four"}, {"Area C"})
         self.assertEqual([u["benchmark"] for u in unreadable], ["Bench Empty", "Bench Empty"])
+
+    def test_空の_td_は_値なしではなく要確認に出す(self):
+        # 取る列でただ 1 つの値なし(Bench Four の Qwen3.8-27B の --)を、空の <td></td> に替える。値なしは 0 になり、空のセルは要確認に出る
+        text = README.replace("<tr>" + _bench("Bench Four") + "<td>--</td>", "<tr>" + _bench("Bench Four") + "<td></td>", 1)
+        self.assertNotEqual(text, README)
+        records, skipped, unreadable = self.parse(text)
+        self.assertEqual(unreadable, [{"model": "Qwen3.8-27B", "mode": None, "benchmark": "Bench Four", "raw_value": ""}])
+        self.assertEqual(skipped["値なし（-- などの記号）"], 0)
+        self.assertEqual(len(records), 10)
 
     def test_形が想定と違えば止める(self):
         cases = {

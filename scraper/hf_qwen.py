@@ -288,6 +288,9 @@ def _labeled_values(cell):
     2026-11-16 の README では、ラベルつきの値は metric-label と metric-value の <div> が、この順で交互に並ぶ。
     空のラベル・空の値(空の metric-label・metric-value の <div>。_CellLinesParser が空の文字列として残す)があれば、
     組がずれていないか分からないので None にする。
+    空のセル(<td></td>。lines が空)も None にする(「要確認」に出す)。値なしにはしない【案】:2026-11-16 の README は、
+    値なしを `--` で示していて、空のセルは無い。空のセルは README に無い形なので、値が読めない形に変わった可能性を、
+    値なしとして黙って数えずに出す(hf_readme.py・google_modelcard.py の Markdown の表では、空のセルは値なし)。
     """
     lines = [s.strip() for s in cell]
     if len(lines) == 1:
@@ -364,8 +367,9 @@ def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha, flagged
                 # 太字(<strong>。README の表の下の注に、太字は行ごとの最高値を示す、と書かれている)は、タグを読まないので文字に残らない。
                 # Markdown の ** が来ても clean_value が外す。強調は取り込まない(R-1 §4-3)
                 value = clean_value(value)
+                # ここに来るのは -- などの記号だけ。空のセル・空の <div> は、_labeled_values が None にして「要確認」に出す
                 if value in _NO_VALUE:
-                    skipped["値なし（--・空欄）"] += 1
+                    skipped["値なし（-- などの記号）"] += 1
                     continue
                 if not _VALUE.fullmatch(value):
                     unreadable.append({"model": model, "mode": None, "benchmark": name, "raw_value": raw})
