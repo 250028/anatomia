@@ -230,10 +230,12 @@ def _redirect_target(repo_id, res, url):
     return target, m["sha"]
 
 
-def fetch_readme(repo_id):
-    """README.md の本文と、版（sha）を返す。403・429 など 200・307 以外は止める。307 は、追ってよい移動先のときだけ 1 回追う。"""
-    if repo_id.split("/")[0] != OFFICIAL_ORG:
-        raise FetchStopped(f"{repo_id} は {OFFICIAL_ORG} のリポジトリではない。取得を止める")
+def fetch_readme(repo_id, official_org=OFFICIAL_ORG):
+    """README.md の本文と、版（sha）を返す。403・429 など 200・307 以外は止める。307 は、追ってよい移動先のときだけ 1 回追う。
+
+    official_org は、ほかの会社の取得（hf_qwen.py）が同じ取り方を使うためのもの。省くと DeepSeek の公式組織になる。"""
+    if repo_id.split("/")[0] != official_org:
+        raise FetchStopped(f"{repo_id} は {official_org} のリポジトリではない。取得を止める")
     url = README_URL.format(repo_id=repo_id)
     first = _request(url)
     if first.status_code == 307:
