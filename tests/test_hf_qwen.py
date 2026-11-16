@@ -389,6 +389,18 @@ class ReadmeWarningsTest(unittest.TestCase):
         self.assertIn("読んだ表 2 の下に注が 1 件ある（要確認", warnings[1])
         self.assertTrue(warnings[1].endswith("注の先頭に名前が出るベンチマーク: CharXiv (RQ), Bench Four"))
 
+    def test_取る列が見出しから消えた表は_その列の名前を出す(self):
+        # VL の表(2 つ目)の Qwen3.6-27B の列名だけを変える
+        first, second = README.split('<table class="vl-table">' + HEAD, 1)
+        text = first + '<table class="vl-table">' + HEAD.replace("<th>Qwen3.6-27B</th>", "<th>Qwen3.6-27B (new)</th>") + second
+        self.assertNotEqual(text, README)
+        warnings = hf_qwen.readme_warnings(text)
+        self.assertIn("読んだ表 2 の見出しに、取る一覧の列が無い（要確認。列の名前が変わった可能性）: Qwen3.6-27B", warnings)
+        self.assertFalse(any("読んだ表 1 の見出し" in w for w in warnings))
+
+    def test_取る列がそろっていれば_列の要確認は出さない(self):
+        self.assertFalse(any("見出しに、取る一覧の列が無い" in w for w in hf_qwen.readme_warnings(README)))
+
     def test_注の文は返さない(self):
         self.assertFalse(any("invented" in w or "made-up" in w for w in hf_qwen.readme_warnings(README)))
 

@@ -243,6 +243,8 @@ def _read_tables(text):
 def readme_warnings(text):
     """取得の終わりに「要確認」として出す、レコードには入れない点を、1 行ずつの文字列のリストで返す。
 
+    読んだ表に、取る一覧の列のうち見出しに無いものがあれば、その名前を出す(列の名前が変わると、その表の値は件数が減るだけで、
+    ほかには何も出ないため)。
     読んだ表の直後に注(<ol> の <li>)があれば、その件数と、注の先頭(最初の「:」の前)に名前が出る、その表のベンチマークを出す。
     2026-11-16 の README では、注に測定条件(ハーネスなど)や社内のベンチマークであることが書かれているが、注は取り込まない。
     注の条件を測定条件(condition)に入れるかは決まっていない(チームに聞く点)。注の文はここでは返さない。
@@ -250,6 +252,9 @@ def readme_warnings(text):
     read, _ = _read_tables(text)
     warnings = []
     for number, (table, notes) in enumerate(read, 1):
+        missing = sorted(TAKEN_MODELS - {_join_lines(c["lines"]) for c in table[0][1:]})
+        if missing:
+            warnings.append(f"読んだ表 {number} の見出しに、取る一覧の列が無い（要確認。列の名前が変わった可能性）: {', '.join(missing)}")
         if not notes:
             continue
         names = []
