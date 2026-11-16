@@ -505,6 +505,19 @@ class MainTest(unittest.TestCase):
         self.assertIn("Qwenの実取得についてのリーダーの判断は、まだ無い", help_text)
         self.assertIn("実行の前に、リーダーの判断が要る。", help_text)
 
+    def test_help_の判断の文は_docstring_の段落と同じ(self):
+        self.assertIn(" ".join(hf_qwen.BEFORE_RUN.split()), " ".join(hf_qwen.__doc__.split()))
+
+    def test_docstring_が無くても_help_は落ちない(self):
+        # python3 -OO では docstring が None になる。そのときも --help が判断の文を出す
+        out = io.StringIO()
+        with mock.patch.object(hf_qwen, "__doc__", None), mock.patch("sys.argv", ["hf_qwen", "--help"]), \
+                mock.patch("scraper.hf_readme.requests.get") as get, contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                hf_qwen.main()
+        get.assert_not_called()
+        self.assertIn("".join(hf_qwen.BEFORE_RUN.split()), "".join(out.getvalue().split()))
+
     def test_取得が止まったら書き出さない(self):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "o.json"

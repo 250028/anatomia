@@ -27,8 +27,10 @@ from scraper import hf_readme
 from scraper.google_modelcard import MIN_INTERVAL_SEC, FetchStopped, unmapped_version_like
 from scraper.values import NO_VALUE, clean_value
 
-# 実行の前に要る判断。--help の末尾に、docstring の「実行の前に：」の段落をそのまま出す(書く場所を docstring の 1 か所にするため)
-BEFORE_RUN = "実行の前に：" + " ".join(__doc__.split("実行の前に：", 1)[1].split())
+# 実行の前に要る判断。--help の末尾(epilog)に出す。上の docstring の「実行の前に：」の段落と同じ文で、同じことはテストが確かめる。
+# docstring から切り出さないのは、python3 -OO では docstring が無くなり、import の時点で落ちるため
+BEFORE_RUN = ("実行の前に：Qwen の実取得についてのリーダーの判断は、まだ無い（R-2 §3-3 の「実取得の判断」は、DeepSeek の 2 リポジトリの"
+              " 1 回の実行についてのもの）。実行の前に、リーダーの判断が要る。")
 
 # 取得してよいリポジトリを固定する。任意指定の引数は設けない（R-2 の判定外のリポジトリに触れないため）。
 # R-1 §2 の Qwen の行・R-3 §2-1 の Qwen の行による(Qwen3.8 系と Qwen3.6-27B を、このカードの列から取る前提で数えている)。
@@ -397,7 +399,8 @@ def fetch_readme(repo_id):
 
 
 def main():
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0], epilog=BEFORE_RUN)
+    # docstring が無いとき(python3 -OO)も落ちないよう、無ければ説明を空にする
+    ap = argparse.ArgumentParser(description=(__doc__ or "").split("\n")[0], epilog=BEFORE_RUN)
     ap.add_argument("--by", required=True, help="取得者(実行したメンバーの名前)")
     ap.add_argument("--out", required=True, help="候補データの出力先(JSON)")
     args = ap.parse_args()
