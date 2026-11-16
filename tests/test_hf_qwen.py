@@ -6,8 +6,8 @@ import json
 import tempfile
 import unittest
 
-# 取得と書き出しの骨組みだけを確かめる。README の本文は、形を確かめていないので作らない(中身は読まない文字列で足りる)
-TEXT = "(README の本文。テストでは読まない)"
+# 取得と書き出しのテストでは、README の本文は読まない(中身は読まない文字列で足りる)
+TEXT = "(README の本文。取得のテストでは読まない)"
 SHA = "0123456789abcdef0123456789abcdef01234567"
 README_URL = "https://huggingface.co/Qwen/X/resolve/main/README.md"
 
@@ -18,9 +18,30 @@ def readme_response(status=200, sha=SHA):
 
 
 class FetchReadmeTest(unittest.TestCase):
+    def setUp(self):
+        # hf_qwen は hf_readme.fetch_readme を使う。307 を追う前の間隔(time.sleep)で待たないよう差し替える
+        patcher = mock.patch("scraper.hf_readme.time.sleep")
+        self.sleep = patcher.start()
+        self.addCleanup(patcher.stop)
+
     def patch_get(self, *responses):
-        # hf_qwen は hf_readme の _get を使うので、ネットワークに出ないよう requests.get を差し替える
+        # ネットワークに出ないよう requests.get を差し替える
         return mock.patch("scraper.hf_readme.requests.get", side_effect=list(responses))
+
+    def test_307_の移動先が_Qwen_の_resolve_cache_なら_1_回だけ追う(self):
+        cache_url = "https://huggingface.co/api/resolve-cache/models/Qwen/X/" + SHA + "/README.md"
+        redirect = mock.Mock(status_code=307, headers={"Location": cache_url})
+        with self.patch_get(redirect, readme_response(sha=None)) as get:
+            self.assertEqual(hf_qwen.fetch_readme("Qwen/X"), (TEXT, SHA))
+        self.assertEqual([c.args[0] for c in get.call_args_list], [README_URL, cache_url])
+        self.sleep.assert_called_once()
+
+    def test_307_の移動先がほかのリポジトリなら止める(self):
+        other = "https://huggingface.co/api/resolve-cache/models/deepseek-ai/X/" + SHA + "/README.md"
+        with self.patch_get(mock.Mock(status_code=307, headers={"Location": other})) as get:
+            with self.assertRaises(FetchStopped):
+                hf_qwen.fetch_readme("Qwen/X")
+        self.assertEqual(get.call_count, 1)
 
     def test_本文と_sha_を返す(self):
         with self.patch_get(readme_response()):
@@ -47,6 +68,7 @@ class FetchReadmeTest(unittest.TestCase):
                 get.assert_not_called()
 
     def test_200_以外が返ったら止まり_再試行しない(self):
+        # 307 は、移動先(Location)が無いので止まる
         for status in (403, 429, 500, 307):
             with self.subTest(status=status):
                 with self.patch_get(readme_response(status=status)) as get:
@@ -63,9 +85,9 @@ class FetchReadmeTest(unittest.TestCase):
                 self.assertEqual(get.call_count, 1)
 
 
-# 中間の形(行ごとのセル。セルは画面で上下に並ぶ文字列のリスト)の自作の表。形は、水戸が 2026-11-16 にブラウザで見た画面の画像に合わせた。
-# 実物のマークアップから、この形が作れるかは確かめていない。モデル名は本物、ベンチマーク名・説明・値・ラベルの組み合わせは架空
-H = [[], ["Qwen3.8-", "27B"], ["Qwen3.6-", "27B"], ["Qwen3.7-", "Plus"], ["Other", "Model-9B"], ["Rival5 Max"]]
+# 中間の形(行ごとのセル。セルは <div> で区切られた文字列のリスト)の自作の表。列見出しは 1 つの文字列(2026-11-16 の README の <th> と同じ)。
+# モデル名は本物、ベンチマーク名・説明・値・ラベルの組み合わせは架空
+H = [[], ["Qwen3.8-27B"], ["Qwen3.6-27B"], ["Qwen3.7-Plus"], ["Other Model-9B"], ["Rival5 Max"]]
 
 
 def row(left, *cells):
@@ -95,7 +117,7 @@ class RecordsFromRowsTest(unittest.TestCase):
             row(["Other work", "Bench B v2"], "11", "12", "1", "2", "3"),
         )
         first, _, third, _ = records
-        # ベンチマーク名は、括弧・版を分けずにページの表記のまま持つ(分けるかは決まっていない)
+        # 対応表(BENCHMARK_NAMES)にない名前は、括弧・版を分けずに README の表記のまま持つ
         self.assertEqual((first["benchmark"], first["benchmark_description"], first["source_category"]),
                          ("Bench A 1.0 (Harness X)", "Doing things", "Area One"))
         self.assertEqual((third["benchmark"], third["source_category"]), ("Bench B v2", "Area Two"))
@@ -148,15 +170,34 @@ class RecordsFromRowsTest(unittest.TestCase):
         self.assertEqual(records, [])
         self.assertEqual(len(unreadable), 2)
 
-    def test_出力のキーは_hf_readme_と同じ形にする(self):
+    def test_出力のキーは_google_modelcard_と同じ形にする(self):
         records, _, _ = build(row(["Doing things", "Bench A"], "10.5%", "20.5", "1", "2", "3"))
         self.assertEqual(records[0], {
-            "provider": "Qwen", "model": "Qwen3.8-27B", "mode": None, "benchmark": "Bench A",
+            "provider": "Qwen", "model": "Qwen3.8-27B", "mode": None, "benchmark": "Bench A", "benchmark_version": None,
             "benchmark_description": "Doing things", "source_category": None, "score": 10.5, "unit": "%",
             "condition": None, "raw_value": "10.5%", "source_url": "u", "sha": SHA,
             "retrieved_at": "2026-11-16", "retrieved_by": "tester", "retrieval_method": "script",
         })
         self.assertIsNone(records[1]["unit"])
+
+    def test_対応表の名前は名前と版に分け_ハーネスはラベルと一緒に測定条件にする(self):
+        records, _, _ = build(
+            row(["Doing things", "Terminal Bench 2.1 (Terminus)"], ["Pass@1", "10.5"], ["Score", "20.5"], "1", "2", "3"),
+            row(["Doing things", "DeepSWE 1.1"], "11", "12", "1", "2", "3"),
+        )
+        self.assertEqual(
+            [(r["benchmark"], r["benchmark_version"], r["condition"]) for r in records],
+            [("Terminal-Bench", "2.1", "Terminus / Pass@1"), ("Terminal-Bench", "2.1", "Terminus / Score"),
+             ("DeepSWE", "v1.1", None), ("DeepSWE", "v1.1", None)],
+        )
+
+    def test_ラベルつきの行の_ラベルのない値なしは値なしとして数える(self):
+        records, skipped, unreadable = build(
+            row(["Doing things", "Bench C"], ["Pass@1", "10.5", "Score", "20.5"], "--", "1", "2", "3"),
+        )
+        self.assertEqual(len(records), 2)
+        self.assertEqual(skipped["値なし（--・空欄）"], 1)
+        self.assertEqual(unreadable, [])
 
     def test_形が想定と違えば止める(self):
         cases = {
@@ -171,16 +212,102 @@ class RecordsFromRowsTest(unittest.TestCase):
                     hf_qwen.records_from_rows(rows, "u", "tester", "2026-11-16", SHA)
 
 
+# README の表の自作の写し。タグ・class・colspan・入れ子・ラベルの置き方だけを、2026-11-16 に水戸が開いた README のマークアップに合わせた
+# (style 属性は省いた)。ベンチマーク名は README と同じものがあるが、説明・注・値は架空で、README の値とは関係がない
+def _th(name):
+    return f"<th>{name}</th>"
+
+
+def _bench(name, desc="Desc"):
+    return f'<td class="benchmark-cell"><div class="benchmark-capability">{desc}</div><div class="benchmark-name">{name}</div></td>'
+
+
+def _stack(*pairs):
+    inner = "".join(f'<div><div class="metric-label">{label}</div><div class="metric-value">{value}</div></div>' for label, value in pairs)
+    return f'<td><div class="metric-stack">{inner}</div></td>'
+
+
+HEAD = "<thead><tr>" + "".join(_th(n) for n in ["", "Qwen3.8-27B", "Qwen3.6-27B", "Qwen3.7-Plus", "Muse Glimmer-30B", "Opus4.6 Max"]) + "</tr></thead>"
+README = "\n".join([
+    "---", "license: apache-2.0", "---", "## Benchmark Results", "### Text Performance",
+    '<div><table class="vl-table">', "<thead><tr>", HEAD[len("<thead><tr>"):], "<tbody>",
+    '<tr><td colspan="6">Area A</td></tr>',
+    "<tr>", _bench("Terminal Bench 2.1 (Terminus)"), "<td>11.1</td>", "<td><strong>22.2</strong></td>", "<td>33.3</td>", "<td>--</td>", "<td>44.4</td>", "</tr>",
+    '<tr><td colspan="6">Area B</td></tr>',
+    "<tr>", _bench("Bench Two"), _stack(("Pass@1", "<strong>1.5</strong>"), ("Score", "2.5")), _stack(("Pass@1", "3.5"), ("Score", "4.5")),
+    _stack(("Pass@1", "5.5"), ("Score", "6.5")), "<td>--</td>", "<td>--</td>", "</tr>",
+    "</tbody>", "</table>", "<div><ol><li>Bench Two: a made-up note.</li><li>A double dash marks a missing value in this made-up table.</li></ol></div></div>",
+    "### VL Performance", "<div>",
+    '<table class="vl-table">' + HEAD + "<tbody>",
+    '<tr><td colspan="6">Area C</td></tr>',
+    "<tr>" + _bench("CharXiv (RQ)") + _stack(("Without CI", "7.25"), ("With CI", "<strong>8.25</strong>")) + _stack(("Without CI", "9.25"))
+    + _stack(("Without CI", "10.25")) + "<td>11.25</td>" + _stack(("Without CI", "12.25")) + "</tr>",
+    "<tr>" + _bench("Bench Four") + "<td>--</td><td>13.75</td><td>14.75</td><td>--</td><td>15.75</td></tr>",
+    "</tbody>", "</table>", "</div>",
+])
+
+
+class ParseReadmeTest(unittest.TestCase):
+    def parse(self, text=README):
+        return hf_qwen.parse_readme(text, "u", "tester", "2026-11-16", SHA)
+
+    def test_2_つの表の取る列を読み_他の列と領域の行を数える(self):
+        records, skipped, unreadable = self.parse()
+        self.assertEqual(
+            [(r["source_category"], r["model"], r["benchmark"], r["benchmark_version"], r["condition"], r["score"]) for r in records],
+            [
+                ("Area A", "Qwen3.8-27B", "Terminal-Bench", "2.1", "Terminus", 11.1),
+                ("Area A", "Qwen3.6-27B", "Terminal-Bench", "2.1", "Terminus", 22.2),
+                ("Area B", "Qwen3.8-27B", "Bench Two", None, "Pass@1", 1.5),
+                ("Area B", "Qwen3.8-27B", "Bench Two", None, "Score", 2.5),
+                ("Area B", "Qwen3.6-27B", "Bench Two", None, "Pass@1", 3.5),
+                ("Area B", "Qwen3.6-27B", "Bench Two", None, "Score", 4.5),
+                ("Area C", "Qwen3.8-27B", "CharXiv (RQ)", None, "Without CI", 7.25),
+                ("Area C", "Qwen3.8-27B", "CharXiv (RQ)", None, "With CI", 8.25),
+                ("Area C", "Qwen3.6-27B", "CharXiv (RQ)", None, "Without CI", 9.25),
+                ("Area C", "Qwen3.6-27B", "Bench Four", None, None, 13.75),
+            ],
+        )
+        self.assertEqual(unreadable, [])
+        self.assertEqual(skipped["読んだ表"], 2)
+        self.assertEqual(skipped["領域の見出しの行"], 3)
+        self.assertEqual(skipped["他社モデルの列"], 4)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 2)
+        self.assertEqual(skipped["値なし（--・空欄）"], 1)
+
+    def test_太字のタグは値に残らず_raw_value_はセルの文字をつなぐ(self):
+        records, _, _ = self.parse()
+        by = {(r["model"], r["benchmark"], r["condition"]): r for r in records}
+        self.assertEqual(by[("Qwen3.6-27B", "Terminal-Bench", "Terminus")]["raw_value"], "22.2")
+        self.assertEqual(by[("Qwen3.8-27B", "Bench Two", "Pass@1")]["raw_value"], "Pass@1 1.5 Score 2.5")
+        self.assertEqual(by[("Qwen3.8-27B", "Bench Two", "Pass@1")]["benchmark_description"], "Desc")
+
+    def test_取る列のない表は読まずに数える(self):
+        extra = '<table><thead><tr><th></th><th>Rival5 Max</th></tr></thead><tbody><tr>' + _bench("Bench Five") + "<td>1.0</td></tr></tbody></table>"
+        records, skipped, _ = self.parse(README + "\n" + extra)
+        self.assertEqual(skipped["読まなかった表（取る一覧の列がない）"], 1)
+        self.assertEqual(skipped["読んだ表"], 2)
+        self.assertEqual(len(records), 10)
+
+    def test_形が想定と違えば止める(self):
+        cases = {
+            "表がない": "## Benchmark Results\nno table",
+            "取る列のある表がない": '<table><thead><tr><th></th><th>Rival5 Max</th></tr></thead></table>',
+            "rowspan がある": README.replace('<td colspan="6">Area A</td>', '<td rowspan="2">Area A</td>'),
+            "幅いっぱいでない colspan": README.replace('<td colspan="6">Area A</td>', '<td colspan="3">Area A</td><td></td><td></td><td></td>'),
+            "見出しの左端が空でない": README.replace("<thead><tr><th></th>", "<thead><tr><th>Benchmark</th>", 1),
+        }
+        for name, text in cases.items():
+            with self.subTest(name):
+                with self.assertRaises(ValueError):
+                    self.parse(text)
+
+
 class RepoIdsTest(unittest.TestCase):
     def test_取得先は公式組織のリポジトリだけ(self):
         for repo_id in hf_qwen.REPO_IDS:
             self.assertEqual(repo_id.split("/")[0], hf_qwen.OFFICIAL_ORG)
 
-    def test_HTML_を読む部分を書くまでは取得先を入れない(self):
-        # HTML から中間の形を作る部分(parse_readme)ができたら、このテストを消して REPO_IDS を入れる
-        self.assertEqual(hf_qwen.REPO_IDS, [])
-        with self.assertRaises(NotImplementedError):
-            hf_qwen.parse_readme(TEXT, "u", "tester", "2026-11-16", SHA)
 
 
 class MainTest(unittest.TestCase):
@@ -195,9 +322,10 @@ class MainTest(unittest.TestCase):
             self.assertFalse(out.exists())
 
     def test_間隔を空けて取得し_出典URLは取得した版の_README_のページにして書く(self):
-        # 解析は差し替える(形を確かめていないので)。確かめるのは、取得・出典URL・書き出しのつなぎ方だけ
+        # 解析は差し替える。確かめるのは、取得・出典URL・書き出しのつなぎ方だけ
         def fake_parse(text, source_url, retrieved_by, retrieved_at, sha):
-            return [{"source_url": source_url, "sha": sha, "retrieved_by": retrieved_by}], {}, []
+            return [{"benchmark": "Bench A", "benchmark_version": None, "source_url": source_url, "sha": sha,
+                     "retrieved_by": retrieved_by}], {}, []
 
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "o.json"
