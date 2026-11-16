@@ -115,7 +115,7 @@ class RecordsFromRowsTest(unittest.TestCase):
         records, skipped, _ = build(
             [["Area One"]],
             row(["Doing things", "Bench A 1.0 (Harness X)"], "10.5", "20.5", "1", "2", "3"),
-            [["Area Two"], [], [], [], [], []],
+            [["Area Two"]],
             row(["Other work", "Bench B v2"], "11", "12", "1", "2", "3"),
         )
         first, _, third, _ = records
@@ -171,6 +171,35 @@ class RecordsFromRowsTest(unittest.TestCase):
         records, _, unreadable = build(row(["Only one line"], "10.5", "20.5", "1", "2", "3"))
         self.assertEqual(records, [])
         self.assertEqual(len(unreadable), 2)
+
+    def test_値のセルがすべて空の行は_領域の行とみなさず要確認に出す(self):
+        records, skipped, unreadable = build(
+            [["Area One"]],
+            row(["Doing things", "Bench Empty"], [], [], [], [], []),
+            row(["Doing things", "Bench A"], "10.5", "20.5", "1", "2", "3"),
+        )
+        # 後の行の分類が、空の行の名前に変わらない
+        self.assertEqual([r["source_category"] for r in records], ["Area One", "Area One"])
+        self.assertEqual(skipped["領域の見出しの行"], 1)
+        self.assertEqual([(u["model"], u["benchmark"]) for u in unreadable], [("Qwen3.8-27B", "Bench Empty"), ("Qwen3.6-27B", "Bench Empty")])
+
+    def test_空のラベルか空の値がある組は_取らず要確認に出す(self):
+        # 空の metric-label・metric-value の <div> は、_CellLinesParser が空の文字列として残す
+        records, _, unreadable = build(
+            row(["Doing things", "Bench C"], ["Pass@1", "", "", "20.5"], ["Pass@1", "11.5", "Score", ""], "1", "2", "3"),
+            row(["Doing things", "Bench D"], [""], "12.5", "1", "2", "3"),
+        )
+        self.assertEqual([(r["model"], r["benchmark"]) for r in records], [("Qwen3.6-27B", "Bench D")])
+        self.assertEqual([(u["model"], u["benchmark"]) for u in unreadable],
+                         [("Qwen3.8-27B", "Bench C"), ("Qwen3.6-27B", "Bench C"), ("Qwen3.8-27B", "Bench D")])
+
+    def test_想定外のタグの印のあるセルは取らず要確認に出す(self):
+        rows = [H, row(["Doing things", "Bench A"], "10.5", "20.5", "1", "2", "3"), row(["Doing things", "Bench B"], "11.5", "21.5", "1", "2", "3")]
+        records, _, unreadable = hf_qwen.records_from_rows(rows, "u", "tester", "2026-11-16", SHA, {(1, 1), (2, 0), (1, 3)})
+        # 取らない列(3)の印は、取る列に響かない。左端の印は、左端が 2 段でない行と同じく、左端の文字をつないで出す
+        self.assertEqual([(r["model"], r["benchmark"]) for r in records], [("Qwen3.6-27B", "Bench A")])
+        self.assertEqual([(u["model"], u["benchmark"]) for u in unreadable],
+                         [("Qwen3.8-27B", "Bench A"), ("Qwen3.8-27B", "Doing things Bench B"), ("Qwen3.6-27B", "Doing things Bench B")])
 
     def test_出力のキーは_google_modelcard_と同じ形にする(self):
         records, _, _ = build(row(["Doing things", "Bench A"], "10.5%", "20.5", "1", "2", "3"))
@@ -291,6 +320,47 @@ class ParseReadmeTest(unittest.TestCase):
         self.assertEqual(skipped["読んだ表"], 2)
         self.assertEqual(len(records), 10)
 
+    def test_値のセルの中の_sup_や_span_は_値につなげず要確認に出す(self):
+        cases = {
+            "sup の脚注": ("<td>11.1</td>", "<td>11.1<sup>1</sup></td>", "11.1 1"),
+            "span で区切った 2 つ": ("<td>11.1</td>", "<td><span>11.1</span><span>5</span></td>", "11.1 5"),
+            "span 1 つ": ("<td>11.1</td>", "<td><span>11.1</span></td>", "11.1"),
+            "ラベルつきの値の中の sup": ('<div class="metric-value"><strong>1.5</strong></div>',
+                                       '<div class="metric-value"><strong>1.5</strong><sup>2</sup></div>', "Pass@1 1.5 2 Score 2.5"),
+        }
+        for name, (old, new, raw) in cases.items():
+            with self.subTest(name):
+                text = README.replace(old, new, 1)
+                self.assertNotEqual(text, README)
+                records, _, unreadable = self.parse(text)
+                self.assertEqual([u["raw_value"] for u in unreadable], [raw])
+                self.assertEqual(unreadable[0]["model"], "Qwen3.8-27B")
+                self.assertEqual(len(records), 10 - (2 if name == "ラベルつきの値の中の sup" else 1))
+
+    def test_左端のセルに想定外のタグがあれば_その行は要確認に出す(self):
+        text = README.replace('<div class="benchmark-name">Bench Four</div>', '<div class="benchmark-name"><a>Bench Four</a></div>', 1)
+        self.assertNotEqual(text, README)
+        records, _, unreadable = self.parse(text)
+        self.assertEqual([u["model"] for u in unreadable], ["Qwen3.8-27B", "Qwen3.6-27B"])
+        self.assertNotIn("Bench Four", [r["benchmark"] for r in records])
+
+    def test_空の_metric_の_div_が重なっても_ラベルと値がずれない(self):
+        # 値の <div> と次のラベルの <div> が両方空だと、空を捨てる読み方では [Pass@1, 2.5] に詰まり、2.5 が Pass@1 の値になる
+        old = '<div class="metric-value"><strong>1.5</strong></div></div><div><div class="metric-label">Score</div>'
+        text = README.replace(old, '<div class="metric-value"></div></div><div><div class="metric-label"></div>', 1)
+        self.assertNotEqual(text, README)
+        records, _, unreadable = self.parse(text)
+        self.assertEqual([(u["model"], u["benchmark"]) for u in unreadable], [("Qwen3.8-27B", "Bench Two")])
+        self.assertNotIn(("Qwen3.8-27B", "Bench Two"), [(r["model"], r["benchmark"]) for r in records])
+
+    def test_値のセルがすべて空の行の後も_分類は領域の行のまま(self):
+        empty = "<tr>" + _bench("Bench Empty") + "<td></td>" * 5 + "</tr>"
+        text = README.replace("<tr>" + _bench("Bench Four"), empty + "<tr>" + _bench("Bench Four"), 1)
+        self.assertNotEqual(text, README)
+        records, _, unreadable = self.parse(text)
+        self.assertEqual({r["source_category"] for r in records if r["benchmark"] == "Bench Four"}, {"Area C"})
+        self.assertEqual([u["benchmark"] for u in unreadable], ["Bench Empty", "Bench Empty"])
+
     def test_形が想定と違えば止める(self):
         cases = {
             "表がない": "## Benchmark Results\nno table",
@@ -298,6 +368,10 @@ class ParseReadmeTest(unittest.TestCase):
             "rowspan がある": README.replace('<td colspan="6">Area A</td>', '<td rowspan="2">Area A</td>'),
             "幅いっぱいでない colspan": README.replace('<td colspan="6">Area A</td>', '<td colspan="3">Area A</td><td></td><td></td><td></td>'),
             "見出しの左端が空でない": README.replace("<thead><tr><th></th>", "<thead><tr><th>Benchmark</th>", 1),
+            "入れ子の表": README.replace("<td>11.1</td>", "<td><table><tr><td>99.9</td></tr></table></td>", 1),
+            "colspan の無い 1 セルだけの行": README.replace('<td colspan="6">Area B</td>', "<td>Area B</td>", 1),
+            "領域の行に想定外のタグ": README.replace('<td colspan="6">Area B</td>', '<td colspan="6">Area B<sup>1</sup></td>', 1),
+            "見出しの行に想定外のタグ": README.replace("<th>Opus4.6 Max</th>", "<th>Opus4.6 Max<sup>1</sup></th>", 1),
         }
         for name, text in cases.items():
             with self.subTest(name):

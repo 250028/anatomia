@@ -80,11 +80,19 @@ class _CellLinesParser(HTMLParser):
     <div class="metric-stack">、太字は <strong>。どれも <div> の区切りで lines の 1 つずつになり、<strong> は区切らない。
     google_modelcard._TableParser は、セルの文字を本文と <small> の 2 つにしか分けないので、ここでは使えない。
 
+    README に無い形で、黙って誤った値・分類を出さないようにする:
+    - セルの中に div・br・p・strong 以外のタグ(<sup> の脚注、<span> など)があれば、そこでも区切ったうえで、セルに印(extra)を付ける。
+      印のあるセルは、_rows と records_from_rows が止めるか「要確認」に出す(<sup>1</sup> が値につながって 12.31 になるのを防ぐ)
+    - 表の中に <table> があれば止める(入れ子の表の行が、外の表の行に混ざるのを防ぐ)
+    - class が metric-label・metric-value の <div> は、空でも lines に空の文字列として残す(空の <div> を捨てると、ラベルと値の組がずれる)
+
     表の直後の <ol> の <li>（README では、表の下の注）の文字列も、表ごとに notes に集める（tables と同じ並び）。
     値としては読まず、取得の終わりに「要確認」を出すためだけに使う。表の後、<ol> の前に文字があれば、その <ol> は表の注とみなさない。
     """
 
     _BREAKS = ("div", "br", "p")
+    _INLINE = ("strong",)
+    _KEEP_EMPTY = ("metric-label", "metric-value")
 
     def __init__(self):
         super().__init__()
@@ -98,9 +106,12 @@ class _CellLinesParser(HTMLParser):
         self._row = None
         self._cell = None
         self._buf = []
+        self._divs = []
 
     def handle_starttag(self, tag, attrs):
         if tag == "table":
+            if self._in_table:
+                raise ValueError("表の中に表がある(表の形が変わった可能性)")
             self.tables.append([])
             self.notes.append([])
             self._in_table = True
@@ -117,9 +128,15 @@ class _CellLinesParser(HTMLParser):
             # rowspan は 2026-11-16 の README には無い。あれば、行と列の対応が変わるので止める
             if int(attrs.get("rowspan") or 1) != 1:
                 raise ValueError("rowspan のあるセルがある(表の形が変わった可能性)")
-            self._cell = {"colspan": int(attrs.get("colspan") or 1), "lines": []}
+            self._cell = {"colspan": int(attrs.get("colspan") or 1), "lines": [], "extra": set()}
             self._buf = []
+            self._divs = []
         elif tag in self._BREAKS and self._cell is not None:
+            self._flush()
+            if tag == "div":
+                self._divs.append((dict(attrs).get("class") or "").split())
+        elif self._cell is not None and tag not in self._INLINE:
+            self._cell["extra"].add(tag)
             self._flush()
 
     def handle_endtag(self, tag):
@@ -127,7 +144,13 @@ class _CellLinesParser(HTMLParser):
             self._flush()
             self._row.append(self._cell)
             self._cell = None
+        elif tag == "div" and self._cell is not None:
+            classes = self._divs.pop() if self._divs else []
+            self._flush(keep_empty=any(c in self._KEEP_EMPTY for c in classes))
         elif tag in self._BREAKS and self._cell is not None:
+            self._flush()
+        elif self._cell is not None and tag not in self._INLINE and tag not in ("tr", "table"):
+            self._cell["extra"].add(tag)
             self._flush()
         elif tag == "tr":
             self._row = None
@@ -151,9 +174,9 @@ class _CellLinesParser(HTMLParser):
         elif data.strip() and not self._in_table and not self._in_ol:
             self._notes_for = None
 
-    def _flush(self):
+    def _flush(self, keep_empty=False):
         text = " ".join("".join(self._buf).split())
-        if text:
+        if text or keep_empty:
             self._cell["lines"].append(text)
         self._buf = []
 
@@ -162,15 +185,24 @@ def _rows(table):
     """_CellLinesParser の表を、records_from_rows の中間の形(行ごとのセル、セルは文字列のリスト)に直す。
 
     colspan は、領域の見出しの行(表の幅いっぱいの 1 セル。2026-11-16 の README では <td colspan="6">)だけに許す。
+    中間の形では、セルが 1 つだけの行を領域の見出しの行とするので、幅いっぱいでない 1 セルだけの行は止める。
+    想定外のタグの印(extra)のあるセルの位置を、(行, 列) の集合で一緒に返す。見出しの行と領域の見出しの行に印があれば止める。
     """
     width = len(table[0])
-    rows = []
-    for row in table:
+    rows, flagged = [], set()
+    for r, row in enumerate(table):
         full_width = len(row) == 1 and row[0]["colspan"] == width
         if not full_width and any(c["colspan"] != 1 for c in row):
             raise ValueError(f"colspan の使い方が想定と違う行がある: {[c['lines'] for c in row]!r}")
+        if len(row) == 1 and not full_width:
+            raise ValueError(f"セルが 1 つだけで、表の幅いっぱいでない行がある: {row[0]['lines']!r}")
+        for c, cell in enumerate(row):
+            if cell["extra"]:
+                if r == 0 or full_width:
+                    raise ValueError(f"見出しの行か領域の見出しの行に、想定外のタグ({sorted(cell['extra'])})がある: {cell['lines']!r}")
+                flagged.add((r, c))
         rows.append([c["lines"] for c in row])
-    return rows
+    return rows, flagged
 
 
 def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
@@ -185,7 +217,8 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     if not_read:
         skipped["読まなかった表（取る一覧の列がない）"] = not_read
     for table, _ in read:
-        r, s, u = records_from_rows(_rows(table), source_url, retrieved_by, retrieved_at, sha)
+        rows, flagged = _rows(table)
+        r, s, u = records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha, flagged)
         records.extend(r)
         skipped.update(s)
         unreadable.extend(u)
@@ -220,7 +253,7 @@ def readme_warnings(text):
         if not notes:
             continue
         names = []
-        for row in _rows(table)[1:]:
+        for row in _rows(table)[0][1:]:
             left = [s.strip() for s in row[0] if s.strip()]
             if len(row) > 1 and len(left) == 2 and left[1] not in names:
                 names.append(left[1])
@@ -237,21 +270,26 @@ def _join_lines(cell):
 
 
 def _is_category_row(row):
-    # 領域の見出しの行(Coding など)。中間の形では、セルが 1 つか、2 つ目以降が空の行とする
-    return len(row) == 1 or all(not _join_lines(c) for c in row[1:])
+    # 領域の見出しの行(Coding など)。中間の形では、セルが 1 つだけの行とする(_rows は、表の幅いっぱいの 1 セルの行だけをこの形にする)。
+    # 値のセルがすべて空の行は、領域の行とみなさない(取る列のセルは「要確認」に出る)
+    return len(row) == 1
 
 
 def _labeled_values(cell):
     """値のセルを、(値, ラベル) のリストにする。[値] はラベルなし、[ラベル, 値, ラベル, 値, ...] はラベルつき。形が違えば None。
 
     2026-11-16 の README では、ラベルつきの値は metric-label と metric-value の <div> が、この順で交互に並ぶ。
+    空のラベル・空の値(空の metric-label・metric-value の <div>。_CellLinesParser が空の文字列として残す)があれば、
+    組がずれていないか分からないので None にする。
     """
-    lines = [s.strip() for s in cell if s.strip()]
+    lines = [s.strip() for s in cell]
     if len(lines) == 1:
-        return [(lines[0], None)]
+        return [(lines[0], None)] if lines[0] else None
     if not lines or len(lines) % 2:
         return None
     labels, values = lines[0::2], lines[1::2]
+    if not all(labels) or not all(values):
+        return None
     # ラベルの位置に値が来ていたら、並びが想定と違う
     if any(_VALUE.fullmatch(clean_value(label)) for label in labels):
         return None
@@ -262,10 +300,12 @@ def _join(*parts):
     return " / ".join(p for p in parts if p) or None
 
 
-def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha):
+def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha, flagged=frozenset()):
     """表を行ごとのセル（セルは、<div> で区切られた文字列のリスト）に直した中間の形から、取る一覧の列のレコードを作る。
 
     rows[0] は見出しの行で、左端は空、2 つ目以降がモデルの列。hf_readme.parse_readme と同じく (records, skipped, unreadable) を返す。
+    flagged は、想定外のタグのあったセルの (行, 列)(_rows が返す)。左端に印があればその行の、取る列のセルに印があればそのセルの値を、
+    取らずに「要確認」に出す。
     """
     if not rows:
         raise ValueError("表が空")
@@ -286,7 +326,7 @@ def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha):
     records = []
     unreadable = []
     category = None
-    for row in body:
+    for r, row in enumerate(body, 1):
         if _is_category_row(row):
             category = _join_lines(row[0]) or None
             skipped["領域の見出しの行"] += 1
@@ -295,7 +335,7 @@ def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha):
             raise ValueError(f"列の数が見出し({len(header)})と違う行がある({len(row)}): {_join_lines(row[0])!r}")
         left = [s.strip() for s in row[0] if s.strip()]
         # 左端のセルは、説明(benchmark-capability)とベンチマーク名(benchmark-name)の 2 つ
-        if len(left) != 2:
+        if len(left) != 2 or (r, 0) in flagged:
             for i, model in taken.items():
                 unreadable.append({"model": model, "mode": None, "benchmark": _join_lines(row[0]), "raw_value": _join_lines(row[i])})
             continue
@@ -310,7 +350,7 @@ def records_from_rows(rows, source_url, retrieved_by, retrieved_at, sha):
             pairs = cells[i]
             unlabeled_value = labeled_row and pairs is not None and any(
                 label is None and clean_value(v) not in _NO_VALUE for v, label in pairs)
-            if pairs is None or unlabeled_value or any(m in raw for m in _FOOTNOTE_MARKS):
+            if pairs is None or unlabeled_value or (r, i) in flagged or any(m in raw for m in _FOOTNOTE_MARKS):
                 unreadable.append({"model": model, "mode": None, "benchmark": name, "raw_value": raw})
                 continue
             for value, label in pairs:
