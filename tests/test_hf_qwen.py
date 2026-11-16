@@ -63,13 +63,121 @@ class FetchReadmeTest(unittest.TestCase):
                 self.assertEqual(get.call_count, 1)
 
 
+# 中間の形(行ごとのセル。セルは画面で上下に並ぶ文字列のリスト)の自作の表。形は、水戸が 2026-11-16 にブラウザで見た画面の画像に合わせた。
+# 実物のマークアップから、この形が作れるかは確かめていない。モデル名は本物、ベンチマーク名・説明・値・ラベルの組み合わせは架空
+H = [[], ["Qwen3.8-", "27B"], ["Qwen3.6-", "27B"], ["Qwen3.7-", "Plus"], ["Other", "Model-9B"], ["Rival5 Max"]]
+
+
+def row(left, *cells):
+    return [left] + [c if isinstance(c, list) else [c] for c in cells]
+
+
+def build(*rows):
+    return hf_qwen.records_from_rows([H, *rows], "u", "tester", "2026-11-16", SHA)
+
+
+class RecordsFromRowsTest(unittest.TestCase):
+    def test_取る一覧の列だけを取り_他社と取らない自社の列は数える(self):
+        records, skipped, unreadable = build(
+            [["Area One"]],
+            row(["Doing things", "Bench A 1.0 (Harness X)"], "10.5", "20.5", "30.5", "40.5", "50.5"),
+        )
+        self.assertEqual([(r["model"], r["score"]) for r in records], [("Qwen3.8-27B", 10.5), ("Qwen3.6-27B", 20.5)])
+        self.assertEqual(skipped["他社モデルの列"], 2)
+        self.assertEqual(skipped["除いた列（取る一覧にない）"], 1)
+        self.assertEqual(unreadable, [])
+
+    def test_左端の_2_段は説明とベンチマーク名に分け_領域の行は分類にする(self):
+        records, skipped, _ = build(
+            [["Area One"]],
+            row(["Doing things", "Bench A 1.0 (Harness X)"], "10.5", "20.5", "1", "2", "3"),
+            [["Area Two"], [], [], [], [], []],
+            row(["Other work", "Bench B v2"], "11", "12", "1", "2", "3"),
+        )
+        first, _, third, _ = records
+        # ベンチマーク名は、括弧・版を分けずにページの表記のまま持つ(分けるかは決まっていない)
+        self.assertEqual((first["benchmark"], first["benchmark_description"], first["source_category"]),
+                         ("Bench A 1.0 (Harness X)", "Doing things", "Area One"))
+        self.assertEqual((third["benchmark"], third["source_category"]), ("Bench B v2", "Area Two"))
+        self.assertEqual(skipped["領域の見出しの行"], 2)
+
+    def test_ラベルつきの_2_つの値は_ラベルを測定条件にして値ごとに_1_件にする(self):
+        records, _, unreadable = build(
+            row(["Doing things", "Bench C"], ["Pass@1", "**10.5**", "Score", "20.5"], ["Pass@1", "11.5", "Score", "21.5"], "--", "--", "--"),
+        )
+        self.assertEqual(
+            [(r["model"], r["condition"], r["score"]) for r in records],
+            [("Qwen3.8-27B", "Pass@1", 10.5), ("Qwen3.8-27B", "Score", 20.5), ("Qwen3.6-27B", "Pass@1", 11.5), ("Qwen3.6-27B", "Score", 21.5)],
+        )
+        # raw_value は、照合で突き合わせられるよう、セルの表記を全部持つ(太字の記号も残す)
+        self.assertEqual(records[0]["raw_value"], "Pass@1 **10.5** Score 20.5")
+        self.assertEqual(unreadable, [])
+
+    def test_ラベルが_1_つだけのセルは_その_1_件だけを取る(self):
+        records, _, _ = build(
+            row(["Seeing things", "Bench D"], ["Without CI", "10.5", "With CI", "20.5"], ["Without CI", "30.5"], "1", "2", "3"),
+        )
+        self.assertEqual([(r["model"], r["condition"]) for r in records],
+                         [("Qwen3.8-27B", "Without CI"), ("Qwen3.8-27B", "With CI"), ("Qwen3.6-27B", "Without CI")])
+
+    def test_ラベルつきの行で_ラベルのない取る列のセルは取らず要確認に出す(self):
+        records, _, unreadable = build(
+            row(["Seeing things", "Bench D"], ["Without CI", "10.5", "With CI", "20.5"], "30.5", "1", "2", "3"),
+        )
+        self.assertEqual([r["model"] for r in records], ["Qwen3.8-27B", "Qwen3.8-27B"])
+        self.assertEqual(unreadable, [{"model": "Qwen3.6-27B", "mode": None, "benchmark": "Bench D", "raw_value": "30.5"}])
+
+    def test_値なしの記号はレコードを作らず数える(self):
+        records, skipped, unreadable = build(
+            row(["Doing things", "Bench E"], "--", "—", "1", "2", "3"),
+        )
+        self.assertEqual(records, [])
+        self.assertEqual(skipped["値なし（--・空欄）"], 2)
+        self.assertEqual(unreadable, [])
+
+    def test_読めない値と脚注の記号つきの値は取らず要確認に出す(self):
+        records, _, unreadable = build(
+            row(["Doing things", "Bench F"], "N/A", "10.5†", "1", "2", "3"),
+            row(["Doing things", "Bench G"], ["Pass@1", "1.0", "Score"], ["10.5", "Score", "11.5", "Pass@1"], "1", "2", "3"),
+        )
+        self.assertEqual(records, [])
+        self.assertEqual([u["raw_value"] for u in unreadable], ["N/A", "10.5†", "Pass@1 1.0 Score", "10.5 Score 11.5 Pass@1"])
+
+    def test_左端が_2_段でない行は取らず要確認に出す(self):
+        records, _, unreadable = build(row(["Only one line"], "10.5", "20.5", "1", "2", "3"))
+        self.assertEqual(records, [])
+        self.assertEqual(len(unreadable), 2)
+
+    def test_出力のキーは_hf_readme_と同じ形にする(self):
+        records, _, _ = build(row(["Doing things", "Bench A"], "10.5%", "20.5", "1", "2", "3"))
+        self.assertEqual(records[0], {
+            "provider": "Qwen", "model": "Qwen3.8-27B", "mode": None, "benchmark": "Bench A",
+            "benchmark_description": "Doing things", "source_category": None, "score": 10.5, "unit": "%",
+            "condition": None, "raw_value": "10.5%", "source_url": "u", "sha": SHA,
+            "retrieved_at": "2026-11-16", "retrieved_by": "tester", "retrieval_method": "script",
+        })
+        self.assertIsNone(records[1]["unit"])
+
+    def test_形が想定と違えば止める(self):
+        cases = {
+            "見出しの左端が空でない": [[["Benchmark"], ["Qwen3.8-27B"]]],
+            "取る列がない": [[[], ["Qwen9-1B"], ["Rival5 Max"]]],
+            "列の数が違う": [H, row(["Doing things", "Bench A"], "1", "2")],
+            "空": [],
+        }
+        for name, rows in cases.items():
+            with self.subTest(name):
+                with self.assertRaises(ValueError):
+                    hf_qwen.records_from_rows(rows, "u", "tester", "2026-11-16", SHA)
+
+
 class RepoIdsTest(unittest.TestCase):
     def test_取得先は公式組織のリポジトリだけ(self):
         for repo_id in hf_qwen.REPO_IDS:
             self.assertEqual(repo_id.split("/")[0], hf_qwen.OFFICIAL_ORG)
 
-    def test_解析を書くまでは取得先を入れない(self):
-        # 解析(parse_readme)ができたら、このテストを消して REPO_IDS を入れる
+    def test_HTML_を読む部分を書くまでは取得先を入れない(self):
+        # HTML から中間の形を作る部分(parse_readme)ができたら、このテストを消して REPO_IDS を入れる
         self.assertEqual(hf_qwen.REPO_IDS, [])
         with self.assertRaises(NotImplementedError):
             hf_qwen.parse_readme(TEXT, "u", "tester", "2026-11-16", SHA)
