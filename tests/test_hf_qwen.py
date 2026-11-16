@@ -407,6 +407,18 @@ class MainTest(unittest.TestCase):
         self.assertEqual([line for line in lines if "注が" in line],
                          ["  " + w for w in hf_qwen.readme_warnings(README)])
 
+    def test_help_に_実行の前にリーダーの判断が要ることを出す(self):
+        out = io.StringIO()
+        with mock.patch("sys.argv", ["hf_qwen", "--help"]), mock.patch("scraper.hf_readme.requests.get") as get, \
+                contextlib.redirect_stdout(out):
+            with self.assertRaises(SystemExit):
+                hf_qwen.main()
+        get.assert_not_called()
+        help_text = "".join(out.getvalue().split())
+        self.assertIn("".join(hf_qwen.BEFORE_RUN.split()), help_text)
+        self.assertIn("Qwenの実取得についてのリーダーの判断は、まだ無い", help_text)
+        self.assertIn("実行の前に、リーダーの判断が要る。", help_text)
+
     def test_取得が止まったら書き出さない(self):
         with tempfile.TemporaryDirectory() as d:
             out = Path(d) / "o.json"
