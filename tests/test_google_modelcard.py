@@ -1,3 +1,4 @@
+import io
 import json
 import tempfile
 import unittest
@@ -42,6 +43,21 @@ def parse(html, taken=TEST_TAKEN):
     with mock.patch.object(google_modelcard, "TAKEN_MODELS", taken):
         return parse_modelcard(html, "https://example.test/card", "tester", "2026-10-05")
 
+
+# 本物の対応表のキー(空白の畳み込みも含む)と、近い表記(大文字の B・版違い)だけを並べた HTML。取る列は本物の取る一覧の 1 つ
+REAL_NAME_LAYOUT = """
+<table>
+<thead><tr><th>Benchmark</th><th>Notes</th><th>Gemini 3.8 Flash</th></tr></thead>
+<tbody>
+<tr><th>DeepSWE v1.1 <small>desc</small></th><td></td><td>10.0%</td></tr>
+<tr><th>  Terminal-bench
+   4.0 </th><td></td><td>20.0%</td></tr>
+<tr><th>Humanity\u2019s Last Exam <small>desc</small></th><td></td><td>30.0%</td></tr>
+<tr><th>OSWorld-2.0</th><td></td><td>40.0%</td></tr>
+<tr><th>Terminal-Bench 4.0</th><td></td><td>5.0%</td></tr>
+<tr><th>Terminal-bench 4.1</th><td></td><td>6.0%</td></tr>
+</tbody></table>
+"""
 
 VALUE_FORMS = """
 <table>
@@ -301,9 +317,6 @@ class NoTableTest(unittest.TestCase):
             parse("<p>no table</p>")
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class BenchmarkNameTest(unittest.TestCase):
     """名前と版を分ける対応表(企画書 §3-3。#51 の相談の暫定のそろえ方)。表にない名前は、推測で分けずにそのまま持つ。"""
@@ -333,3 +346,31 @@ class BenchmarkNameTest(unittest.TestCase):
         self.assertEqual(names["OSWorld-2.0"], ("OSWorld", "2.0"))
         self.assertEqual(names["Humanity\u2019s Last Exam"], ("Humanity's Last Exam", None))
 
+    def test_本物の対応表は_ページの文字列を_parse_modelcard_に通しても当たる(self):
+        """表のキーが、空白をそろえたあとのページの名前と 1 文字ずつ合うかを、通した結果で確かめる。
+        近い表記(大文字の B・版違い)は、表に当たらず、そのまま通る(版は null)。"""
+        records = parse(REAL_NAME_LAYOUT, taken=REAL_TAKEN_MODELS)[0]
+        self.assertEqual([(r["benchmark"], r["benchmark_version"]) for r in records], [
+            ("DeepSWE", "v1.1"),
+            ("Terminal-Bench", "4.0"),
+            ("Humanity's Last Exam", None),
+            ("OSWorld", "2.0"),
+            ("Terminal-Bench 4.0", None),
+            ("Terminal-bench 4.1", None),
+        ])
+
+    def test_対応表にない版らしい名前の一覧(self):
+        records = parse(REAL_NAME_LAYOUT, taken=REAL_TAKEN_MODELS)[0]
+        self.assertEqual(google_modelcard.unmapped_version_like(records), ["Terminal-Bench 4.0", "Terminal-bench 4.1"])
+
+    def test_取得の終わりに_対応表にない版らしい名前を標準エラーに出す(self):
+        pages = {google_modelcard.ROBOTS_URL: response(200, MainTest.ROBOTS_OK)}
+        pages.update({u: response(200, CATEGORY_LAYOUT) for u in google_modelcard.MODEL_CARD_URLS})
+        with mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            MainTest().run_main(pages)
+        self.assertIn("対応表にない名前", err.getvalue())
+        self.assertIn("Bench A 2.1", err.getvalue())  # CATEGORY_LAYOUT の名前。版らしい数字を含み、表にない
+
+
+if __name__ == "__main__":
+    unittest.main()

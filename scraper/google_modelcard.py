@@ -221,6 +221,16 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
     return records, skipped, unreadable
 
 
+# 版らしい数字(4.0・v2・2 など)を含む名前。取得の終わりに「要確認」を出すためだけに使い、名前と版を分けるのには使わない(分けるのは対応表だけ)
+_VERSION_LIKE = re.compile(r"(?:^|[ -])v?\d+(?:\.\d+)*(?=$|[ (])")
+
+
+def unmapped_version_like(records):
+    """対応表を通したあとも、名前に版らしい数字が残っているベンチマーク名(重複なし・並べ替え済み)。
+    ページが新しい版を出したり、表記が変わったりして、表のキーに当たらなくなったときに気づくための一覧。"""
+    return sorted({r["benchmark"] for r in records if r["benchmark_version"] is None and _VERSION_LIKE.search(r["benchmark"])})
+
+
 def fetch(url):
     # 再試行はしない。403・429 などが返ったら止める（回避しない）。
     # リダイレクトは追わない：移動先は R-2 の判定を受けていないサイトかもしれず、事後の確認では触れること自体を防げない
@@ -299,6 +309,8 @@ def main():
             print(f"{url}: {len(records)} 件。取り込まなかった: {skipped}", file=sys.stderr)
             for u in unreadable:
                 print(f"  解釈できない値（要確認）: {u['model']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
+            for name in unmapped_version_like(records):
+                print(f"  版らしい数字を含むが、対応表にない名前（要確認。BENCHMARK_NAMES に足すかを決める）: {name}", file=sys.stderr)
             all_records.extend(records)
     except FetchStopped as e:
         sys.exit(str(e))
