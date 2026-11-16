@@ -2,6 +2,8 @@ from scraper import hf_qwen
 from scraper.google_modelcard import FetchStopped
 from pathlib import Path
 from unittest import mock
+import contextlib
+import io
 import json
 import tempfile
 import unittest
@@ -243,7 +245,7 @@ README = "\n".join([
     "<tr>" + _bench("CharXiv (RQ)") + _stack(("Without CI", "7.25"), ("With CI", "<strong>8.25</strong>")) + _stack(("Without CI", "9.25"))
     + _stack(("Without CI", "10.25")) + "<td>11.25</td>" + _stack(("Without CI", "12.25")) + "</tr>",
     "<tr>" + _bench("Bench Four") + "<td>--</td><td>13.75</td><td>14.75</td><td>--</td><td>15.75</td></tr>",
-    "</tbody>", "</table>", "</div>",
+    "</tbody>", "</table>", "<ol><li>Bench Four and CharXiv (RQ): another invented remark.</li></ol>", "</div>",
 ])
 
 
@@ -303,6 +305,45 @@ class ParseReadmeTest(unittest.TestCase):
                     self.parse(text)
 
 
+class ReadmeWarningsTest(unittest.TestCase):
+    def test_表の直後の注の件数と_注の先頭に名前が出るベンチマークを出す(self):
+        warnings = hf_qwen.readme_warnings(README)
+        self.assertEqual(len(warnings), 2)
+        self.assertIn("読んだ表 1 の下に注が 2 件ある（要確認", warnings[0])
+        self.assertTrue(warnings[0].endswith("注の先頭に名前が出るベンチマーク: Bench Two"))
+        # 名前は表の並びで出す
+        self.assertIn("読んだ表 2 の下に注が 1 件ある（要確認", warnings[1])
+        self.assertTrue(warnings[1].endswith("注の先頭に名前が出るベンチマーク: CharXiv (RQ), Bench Four"))
+
+    def test_注の文は返さない(self):
+        self.assertFalse(any("invented" in w or "made-up" in w for w in hf_qwen.readme_warnings(README)))
+
+    def test_表のベンチマークに当たらない注だけなら_件数だけを出す(self):
+        text = README.replace("<li>Bench Two: a made-up note.</li>", "<li>Bench Zero: a made-up note.</li>")
+        self.assertTrue(hf_qwen.readme_warnings(text)[0].endswith("注の先頭に名前が出るベンチマーク: なし"))
+
+    def test_名前の一部だけが一致しても数えない(self):
+        text = README.replace("<li>Bench Two: a made-up note.</li>", "<li>Bench Twofold: a made-up note.</li>")
+        self.assertTrue(hf_qwen.readme_warnings(text)[0].endswith("なし"))
+
+    def test_表の後に文があってからの_ol_は表の注とみなさない(self):
+        text = README.replace("</table>\n<div><ol>", "</table>\nSome text.\n<div><ol>", 1)
+        self.assertNotEqual(text, README)
+        warnings = hf_qwen.readme_warnings(text)
+        self.assertEqual(len(warnings), 1)
+        self.assertIn("読んだ表 2", warnings[0])
+
+    def test_注が無ければ何も出さない(self):
+        text = README.replace("<li>Bench Four and CharXiv (RQ): another invented remark.</li>", "")
+        text = text.replace("<li>Bench Two: a made-up note.</li><li>A double dash marks a missing value in this made-up table.</li>", "")
+        self.assertEqual(hf_qwen.readme_warnings(text), [])
+
+    def test_注があってもレコードは変わらない(self):
+        without = README.replace("<li>Bench Four and CharXiv (RQ): another invented remark.</li>", "")
+        self.assertEqual(hf_qwen.parse_readme(README, "u", "t", "2026-11-16", SHA),
+                         hf_qwen.parse_readme(without, "u", "t", "2026-11-16", SHA))
+
+
 class RepoIdsTest(unittest.TestCase):
     def test_取得先は公式組織のリポジトリだけ(self):
         for repo_id in hf_qwen.REPO_IDS:
@@ -336,6 +377,7 @@ class MainTest(unittest.TestCase):
                     mock.patch.object(hf_qwen.time, "sleep") as sleep, \
                     mock.patch.object(hf_qwen, "fetch_readme", return_value=(TEXT, "abc123")) as fetch, \
                     mock.patch.object(hf_qwen, "parse_readme", side_effect=fake_parse), \
+                    mock.patch.object(hf_qwen, "readme_warnings", return_value=[]), \
                     mock.patch("sys.argv", argv):
                 hf_qwen.main()
             records = json.loads(out.read_text(encoding="utf-8"))["records"]
@@ -347,6 +389,23 @@ class MainTest(unittest.TestCase):
         self.assertEqual({r["retrieved_by"] for r in records}, {"tester"})
         self.assertEqual(sleep.call_count, 2)
         sleep.assert_called_with(hf_qwen.MIN_INTERVAL_SEC)
+
+    def test_表の下の注は_取得の終わりに要確認として標準エラーに出し_書き出す形は変えない(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "o.json"
+            argv = ["hf_qwen", "--by", "tester", "--out", str(out)]
+            err = io.StringIO()
+            with mock.patch.object(hf_qwen, "REPO_IDS", ["Qwen/X"]), mock.patch.object(hf_qwen.time, "sleep"), \
+                    mock.patch.object(hf_qwen, "fetch_readme", return_value=(README, SHA)), \
+                    mock.patch("sys.argv", argv), contextlib.redirect_stderr(err):
+                hf_qwen.main()
+            data = json.loads(out.read_text(encoding="utf-8"))
+        self.assertEqual(list(data), ["records"])
+        self.assertEqual(len(data["records"]), 10)
+        lines = err.getvalue().splitlines()
+        self.assertTrue(lines[0].startswith("https://huggingface.co/Qwen/X/blob/"))
+        self.assertEqual([line for line in lines if "注が" in line],
+                         ["  " + w for w in hf_qwen.readme_warnings(README)])
 
     def test_取得が止まったら書き出さない(self):
         with tempfile.TemporaryDirectory() as d:

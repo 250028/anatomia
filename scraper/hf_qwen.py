@@ -72,6 +72,9 @@ class _CellLinesParser(HTMLParser):
     （ベンチマーク名）、ラベルつきの値は <div class="metric-label"> と <div class="metric-value"> の組を並べた
     <div class="metric-stack">、太字は <strong>。どれも <div> の区切りで lines の 1 つずつになり、<strong> は区切らない。
     google_modelcard._TableParser は、セルの文字を本文と <small> の 2 つにしか分けないので、ここでは使えない。
+
+    表の直後の <ol> の <li>（README では、表の下の注）の文字列も、表ごとに notes に集める（tables と同じ並び）。
+    値としては読まず、取得の終わりに「要確認」を出すためだけに使う。表の後、<ol> の前に文字があれば、その <ol> は表の注とみなさない。
     """
 
     _BREAKS = ("div", "br", "p")
@@ -79,6 +82,12 @@ class _CellLinesParser(HTMLParser):
     def __init__(self):
         super().__init__()
         self.tables = []
+        self.notes = []
+        self._in_table = False
+        # 直前に閉じた表の番号。表の後に文字が来るか、最初の <ol> が閉じるまでの間だけ持つ
+        self._notes_for = None
+        self._in_ol = False
+        self._li = None
         self._row = None
         self._cell = None
         self._buf = []
@@ -86,6 +95,13 @@ class _CellLinesParser(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == "table":
             self.tables.append([])
+            self.notes.append([])
+            self._in_table = True
+            self._notes_for = None
+        elif tag == "ol" and not self._in_table and self._notes_for is not None:
+            self._in_ol = True
+        elif tag == "li" and self._in_ol:
+            self._li = []
         elif tag == "tr" and self.tables:
             self._row = []
             self.tables[-1].append(self._row)
@@ -108,10 +124,25 @@ class _CellLinesParser(HTMLParser):
             self._flush()
         elif tag == "tr":
             self._row = None
+        elif tag == "table":
+            self._in_table = False
+            self._notes_for = len(self.tables) - 1
+        elif tag == "li" and self._li is not None:
+            text = " ".join("".join(self._li).split())
+            if text:
+                self.notes[self._notes_for].append(text)
+            self._li = None
+        elif tag == "ol" and self._in_ol:
+            self._in_ol = False
+            self._notes_for = None
 
     def handle_data(self, data):
         if self._cell is not None:
             self._buf.append(data)
+        elif self._li is not None:
+            self._li.append(data)
+        elif data.strip() and not self._in_table and not self._in_ol:
+            self._notes_for = None
 
     def _flush(self):
         text = " ".join("".join(self._buf).split())
@@ -142,27 +173,56 @@ def parse_readme(text, source_url, retrieved_by, retrieved_at, sha):
     hf_readme.py は最初の表だけを読むが、Qwen で同じにすると VL の表を落とすため。チームの決定ではない。
     取る列を持たない表は、読まずに数える。
     """
-    parser = _CellLinesParser()
-    parser.feed(text)
-    parser.close()
-    tables = [t for t in parser.tables if t]
-    if not tables:
-        raise ValueError("HTML の表が見つからない(README の構造が変わった可能性)")
+    read, not_read = _read_tables(text)
     records, skipped, unreadable = [], Counter(), []
-    read = 0
-    for table in tables:
-        if not any(_join_lines(c["lines"]) in TAKEN_MODELS for c in table[0][1:]):
-            skipped["読まなかった表（取る一覧の列がない）"] += 1
-            continue
+    if not_read:
+        skipped["読まなかった表（取る一覧の列がない）"] = not_read
+    for table, _ in read:
         r, s, u = records_from_rows(_rows(table), source_url, retrieved_by, retrieved_at, sha)
         records.extend(r)
         skipped.update(s)
         unreadable.extend(u)
-        read += 1
+    skipped["読んだ表"] = len(read)
+    return records, skipped, unreadable
+
+
+def _read_tables(text):
+    """README の表のうち、取る列を持つものを (表, 表の直後の注) のリストで、取る列を持たない表をその数で返す。"""
+    parser = _CellLinesParser()
+    parser.feed(text)
+    parser.close()
+    tables = [(t, n) for t, n in zip(parser.tables, parser.notes) if t]
+    if not tables:
+        raise ValueError("HTML の表が見つからない(README の構造が変わった可能性)")
+    read = [(t, n) for t, n in tables if any(_join_lines(c["lines"]) in TAKEN_MODELS for c in t[0][1:])]
     if not read:
         raise ValueError("取る列(取る一覧にある Qwen の列)を持つ表が見つからない(README の構造が変わった可能性)")
-    skipped["読んだ表"] = read
-    return records, skipped, unreadable
+    return read, len(tables) - len(read)
+
+
+def readme_warnings(text):
+    """取得の終わりに「要確認」として出す、レコードには入れない点を、1 行ずつの文字列のリストで返す。
+
+    読んだ表の直後に注(<ol> の <li>)があれば、その件数と、注の先頭(最初の「:」の前)に名前が出る、その表のベンチマークを出す。
+    2026-11-16 の README では、注に測定条件(ハーネスなど)や社内のベンチマークであることが書かれているが、注は取り込まない。
+    注の条件を測定条件(condition)に入れるかは決まっていない(チームに聞く点)。注の文はここでは返さない。
+    """
+    read, _ = _read_tables(text)
+    warnings = []
+    for number, (table, notes) in enumerate(read, 1):
+        if not notes:
+            continue
+        names = []
+        for row in _rows(table)[1:]:
+            left = [s.strip() for s in row[0] if s.strip()]
+            if len(row) > 1 and len(left) == 2 and left[1] not in names:
+                names.append(left[1])
+        heads = [note.split(":", 1)[0] for note in notes if ":" in note]
+        noted = [n for n in names if any(re.search(rf"(?<![\w-]){re.escape(n)}(?![\w-])", h) for h in heads)]
+        warnings.append(
+            f"読んだ表 {number} の下に注が {len(notes)} 件ある（要確認。注は取り込んでいない。測定条件などが書かれていることがある）。"
+            f"注の先頭に名前が出るベンチマーク: {', '.join(noted) or 'なし'}")
+    return warnings
 
 
 def _join_lines(cell):
@@ -306,6 +366,8 @@ def main():
                 print(f"  解釈できない値(要確認): {u['model']} / {u['mode']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
             for name in unmapped_version_like(records):
                 print(f"  版らしい数字を含むが、対応表にない名前（要確認。BENCHMARK_NAMES に足すかを決める）: {name}", file=sys.stderr)
+            for warning in readme_warnings(text):
+                print(f"  {warning}", file=sys.stderr)
             all_records.extend(records)
     except FetchStopped as e:
         sys.exit(str(e))
