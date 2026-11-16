@@ -531,6 +531,9 @@ class FetchReadmeRedirectTest(unittest.TestCase):
             "sha が短い": "https://huggingface.co/api/resolve-cache/models/deepseek-ai/X/" + "a" * 39 + "/README.md",
             "README でない": "https://huggingface.co/api/resolve-cache/models/deepseek-ai/X/" + SHA + "/config.json",
             "Location なし": None,
+            "壊れた IPv6 の形(閉じ括弧なし)": "https://[::1" + CACHE_PATH,
+            "壊れた IPv6 の形(スキームなし)": "//[::1/x",
+            "壊れた IPv6 の形(ホストが開き括弧だけ)": "http://[",
         }
         for name, location in bad.items():
             with self.subTest(name=name):

@@ -215,8 +215,12 @@ def _redirect_target(repo_id, res, url):
     location = res.headers.get("Location")
     if not isinstance(location, str):
         raise FetchStopped(f"{url} が 307 を返したが、移動先(Location)が読めない。取得を止める")
-    target = urljoin(url, location)
-    parts = urlsplit(target)
+    # urljoin・urlsplit は、閉じていない IPv6 の括弧などで ValueError を出す。main は FetchStopped だけを捕まえるので、止める形に直す
+    try:
+        target = urljoin(url, location)
+        parts = urlsplit(target)
+    except ValueError:
+        raise FetchStopped(f"{url} が 307 を返したが、移動先 {location!r} は URL として読めない。取得を止める") from None
     m = _RESOLVE_CACHE_PATH.fullmatch(parts.path)
     # netloc を文字列で比べるので、ユーザー情報（user@）やポート番号つきの URL は通らない
     if parts.scheme != "https" or parts.netloc != "huggingface.co" or not m or m["repo"] != repo_id:
