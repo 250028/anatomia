@@ -34,6 +34,17 @@ OWN_MODEL_PREFIX = "Gemini"
 # 同じカードの表には、Gemini 3.7 Flash・3.1 Pro・3 Flash の列もあるが、R-3 §3 の 1 で数えないので取らない。
 # 一覧にない列は、取り込まずに数える。足すときは企画書 §4-3 の「見直し」で行う(DeepSeek の hf_readme.py と同じ形)
 TAKEN_MODELS = frozenset({"Gemini 3.8 Flash", "Gemini 3.5 Flash"})
+# ページの名前 → (benchmark, benchmark_version)。xAI・OpenAI・Mistral AI の正式データと同じ、名前と版を分ける形にそろえる(#51 の相談。暫定。
+# 名前に含めるか別の項目にするかの最終的な決め方は §3-3・R-4・R-5)。末尾の数字から自動で分けない:
+# 版が小数点のない名前(Finance Agent v2 など)があり、機械的に分けると誤るため。ここにない名前は、ページの表記のまま持つ(版は null)。
+# 足すときは、ほかの会社の同じベンチマークの名前と版を見て、書き方(大文字小文字・ハイフン・アポストロフィ)をそろえる(§3-3 の正規化の範囲)
+BENCHMARK_NAMES = {
+    "DeepSWE v1.1": ("DeepSWE", "v1.1"),
+    "Terminal-bench 4.0": ("Terminal-Bench", "4.0"),
+    "Terminal-bench 2.1": ("Terminal-Bench", "2.1"),
+    "OSWorld-2.0": ("OSWorld", "2.0"),
+    "Humanity\u2019s Last Exam": ("Humanity's Last Exam", None),
+}
 MIN_INTERVAL_SEC = 3
 USER_AGENT = "Anatomia-class-project (manual run)"
 
@@ -186,12 +197,14 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
                 continue
             unit = "%" if m.group(2) else ("Elo" if notes.lower() == "elo" else None)
             condition = _join("" if notes.lower() == "elo" else notes, cell["small"])
+            benchmark, benchmark_version = BENCHMARK_NAMES.get(bench_cell["text"], (bench_cell["text"], None))
             # 出力の形は暫定。§3-3【案】が決まったら合わせる（§3-3 にない項目: as_of・source_category・benchmark_description・raw_value）
             records.append(
                 {
                     "provider": PROVIDER,
                     "model": model,
-                    "benchmark": bench_cell["text"],
+                    "benchmark": benchmark,
+                    "benchmark_version": benchmark_version,
                     "benchmark_description": bench_cell["small"] or None,
                     "source_category": category,
                     "score": float(m.group(1)),
@@ -206,6 +219,16 @@ def parse_modelcard(html, source_url, retrieved_by, retrieved_at):
                 }
             )
     return records, skipped, unreadable
+
+
+# 版らしい数字(4.0・v2・2 など)を含む名前。取得の終わりに「要確認」を出すためだけに使い、名前と版を分けるのには使わない(分けるのは対応表だけ)
+_VERSION_LIKE = re.compile(r"(?:^|[ -])v?\d+(?:\.\d+)*(?=$|[ (])")
+
+
+def unmapped_version_like(records):
+    """対応表を通したあとも、名前に版らしい数字が残っているベンチマーク名(重複なし・並べ替え済み)。
+    ページが新しい版を出したり、表記が変わったりして、表のキーに当たらなくなったときに気づくための一覧。"""
+    return sorted({r["benchmark"] for r in records if r["benchmark_version"] is None and _VERSION_LIKE.search(r["benchmark"])})
 
 
 def fetch(url):
@@ -286,6 +309,8 @@ def main():
             print(f"{url}: {len(records)} 件。取り込まなかった: {skipped}", file=sys.stderr)
             for u in unreadable:
                 print(f"  解釈できない値（要確認）: {u['model']} / {u['benchmark']} / {u['raw_value']!r}", file=sys.stderr)
+            for name in unmapped_version_like(records):
+                print(f"  版らしい数字を含むが、対応表にない名前（要確認。BENCHMARK_NAMES に足すかを決める）: {name}", file=sys.stderr)
             all_records.extend(records)
     except FetchStopped as e:
         sys.exit(str(e))
