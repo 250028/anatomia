@@ -228,6 +228,73 @@ class ReadScraperJsonTest(TempDirTestCase):
                 self.assertEqual((r["as_of"], len(caught)), (ok, 0))
 
 
+class BenchmarkNamesTest(TempDirTestCase):
+    """会社ごとの対応表(BENCHMARK_NAMES_BY_PROVIDER)。取得元の名前を、名前と版に分ける。値は変えない。"""
+
+    def deepseek(self, *records):
+        recs = [{**SCRAPER_RECORD, "provider": "DeepSeek", **r} for r in records]
+        return self.write("DeepSeek.json", json.dumps({"records": recs}, ensure_ascii=False))
+
+    def read(self, path):
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            records = read_scraper_json(path)
+        return records, [str(w.message) for w in caught]
+
+    def test_対応表にある名前は_名前と版に分け_値は変えない(self):
+        for name, expected in [
+            ("DeepSWE v1.1", ("DeepSWE", "v1.1")),
+            ("Terminal-Bench 2.1", ("Terminal-Bench", "2.1")),
+            ("Terminal Bench 2.1", ("Terminal-Bench", "2.1")),
+            ("Terminal-Bench 3.0", ("Terminal-Bench", "3.0")),
+            ("Terminal-Bench 4.0", ("Terminal-Bench", "4.0")),
+        ]:
+            with self.subTest(name=name):
+                (r,), _ = self.read(self.deepseek({"benchmark": name, "benchmark_version": None, "as_of": None}))
+                self.assertEqual((r["benchmark"], r["benchmark_version"]), expected)
+                for key in ["score", "raw_value", "unit", "condition", "mode", "model", "source_url"]:
+                    self.assertEqual(r[key], SCRAPER_RECORD.get(key))
+
+    def test_対応表にない名前は_そのまま持つ(self):
+        (r,), warned = self.read(self.deepseek({"benchmark": "Cybergym", "as_of": None}))
+        self.assertEqual((r["benchmark"], r["benchmark_version"]), ("Cybergym", None))
+        self.assertEqual(warned, [])
+
+    def test_版がすでにある件には当てない(self):
+        (r,), warned = self.read(self.deepseek({"benchmark": "Terminal-Bench 2.1", "benchmark_version": "9.9", "as_of": None}))
+        self.assertEqual((r["benchmark"], r["benchmark_version"]), ("Terminal-Bench 2.1", "9.9"))
+        self.assertEqual(warned, [])
+
+    def test_ほかの会社には当てない(self):
+        (r,), warned = self.read(self.write("Google.json", json.dumps({"records": [{**SCRAPER_RECORD, "benchmark": "Terminal-Bench 2.1", "as_of": None}]})))
+        self.assertEqual((r["provider"], r["benchmark"], r["benchmark_version"]), ("Google", "Terminal-Bench 2.1", None))
+        self.assertEqual(warned, [])
+
+    def test_変換済みの出力にもう一度通しても_同じ結果(self):
+        first, _ = self.read(self.deepseek({"benchmark": "DeepSWE v1.1", "as_of": None}))
+        again, warned = self.read(self.write("DeepSeek.json", json.dumps({"records": first}, ensure_ascii=False)))
+        self.assertEqual(again, first)
+        self.assertEqual(warned, [])
+
+    def test_分けた件数と名前を_ファイルごとに_1回だけ警告する(self):
+        _, warned = self.read(
+            self.deepseek(
+                {"benchmark": "Terminal-Bench 2.1", "as_of": None},
+                {"benchmark": "Terminal Bench 2.1", "model": "Model-Y", "as_of": None},
+                {"benchmark": "Cybergym", "as_of": None},
+            )
+        )
+        self.assertEqual(len(warned), 1)
+        self.assertIn("2 件", warned[0])
+        self.assertIn("Terminal-Bench 2.1", warned[0])
+        self.assertIn("値(score・raw_value など)は変えていない", warned[0])
+
+    def test_手入力の_CSV_には当てない(self):
+        row = ROW.format(sha=SHA).replace("Bench A,v2", "Terminal-Bench 2.1,")
+        (r,) = read_manual_csv(self.csv(row, name="DeepSeek.csv"))
+        self.assertEqual((r["benchmark"], r["benchmark_version"]), ("Terminal-Bench 2.1", None))
+
+
 class ReadScraperJsonTypeTest(TempDirTestCase):
     def json(self, *records):
         return self.write("Google.json", json.dumps({"records": list(records)}, ensure_ascii=False))
