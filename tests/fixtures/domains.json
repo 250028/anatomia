@@ -1,0 +1,13 @@
+{
+  "status": "proposal",
+  "source": "tests/fixtures/domains.json",
+  "note": "ダミーの対応表(架空の領域・ベンチマーク)。画面を `-- --dummy` で動かすときと、テストで使う。ダミー領域3 は、当てはまる値が 0 件の領域。Bench-Y は別名で当てはまり、Bench-Z は対応表に無い(未分類)",
+  "domains": ["ダミー領域1", "ダミー領域2", "ダミー領域3"],
+  "benchmarks": [
+    {"benchmark": "Bench-V", "domain": "ダミー領域1", "aliases": []},
+    {"benchmark": "Bench-W", "domain": "ダミー領域1", "aliases": []},
+    {"benchmark": "Bench-X", "domain": "ダミー領域2", "aliases": []},
+    {"benchmark": "Bench Y", "domain": "ダミー領域2", "aliases": ["Bench-Y"]},
+    {"benchmark": "Bench-Q", "domain": "ダミー領域3", "aliases": []}
+  ]
+}
