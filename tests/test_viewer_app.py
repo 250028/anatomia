@@ -194,23 +194,29 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業", "領域"])  # 領域は企業の下
         self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
 
-    def test_本文は_ダミーの表示_常に出す_1_行_表_詳細_凡例の順(self):
+    def test_本文は_ダミーの表示_領域の注_常に出す_1_行_表_詳細_凡例の順(self):
+        # 領域の分類が案であることの注は、表が出ないときにも出すため、絞り込みで止まるより前(ダミーの表示の次)に置いた
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
-        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "caption", "caption"])
+        self.assertEqual(
+            [e.type for e in parts], ["warning", "caption", "text", "dataframe", "markdown", "caption", "caption"]
+        )
         self.assertIn("ダミーデータ", parts[0].value)
-        self.assertIn("自己申告", parts[1].value)
-        self.assertEqual(parts[3].value, "**選んだセルの詳細**")  # 詳細は表の下
-        self.assertIn("セルを選ぶと", parts[4].value)
-        self.assertIn("未公表", parts[5].value)  # 凡例の全文は本文のいちばん下
+        self.assertIn("領域の分類は案です", parts[1].value)
+        self.assertIn("自己申告", parts[2].value)
+        self.assertEqual(parts[4].value, "**選んだセルの詳細**")  # 詳細は表の下
+        self.assertIn("セルを選ぶと", parts[5].value)
+        self.assertIn("未公表", parts[6].value)  # 凡例の全文は本文のいちばん下
         self.assertEqual(len(self.at.expander), 0)
 
     def test_セルを選ぶと_詳細は表と凡例の間に出る(self):
         i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
         self.select(i, "Bench-W")
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]
-        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "dataframe", "caption"])
-        self.assertEqual(list(parts[4].value.columns)[:1], ["モデル"])
-        self.assertIn("未公表", parts[5].value)
+        self.assertEqual(
+            [e.type for e in parts], ["warning", "caption", "text", "dataframe", "markdown", "dataframe", "caption"]
+        )
+        self.assertEqual(list(parts[5].value.columns)[:1], ["モデル"])
+        self.assertIn("未公表", parts[6].value)
 
     def test_メニューは最初は閉じる設定(self):
         # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
@@ -533,7 +539,9 @@ class DomainTest(unittest.TestCase):
         self.assertFalse(any(d.key and d.key.startswith("表の選択:") for d in self.at.dataframe))
         self.assertIn(self.EMPTY_DOMAIN, [i.value for i in self.at.info])
         self.assertFalse(any("選んだセルは「未公表」" in i.value for i in self.at.info))
-        self.assertTrue(any("対応表" in c.value and "R-4" in c.value for c in self.at.main.caption))
+        note = next(c.value for c in self.at.main.caption if "選んだ企業の正式データ" in c.value)
+        self.assertIn("「未公表」（会社が、あるベンチマークの値を公表していないこと）とは意味が違います", note)
+        self.assertNotIn("—", note)  # この状態では凡例(「—」の意味)が出ないので、記号に頼らない
         self.assertIn("自己申告", top_line(self.at))  # 常に出す 1 行は残す
 
     def test_領域を全部外すと表を出さずに案内する(self):
@@ -542,11 +550,41 @@ class DomainTest(unittest.TestCase):
         self.assertEqual(len(self.at.dataframe), 0)
         self.assertTrue(any("領域を 1 つ以上" in i.value for i in self.at.info))
 
-    def test_領域の分類が案であることを_凡例に常に出す(self):
-        legend = self.at.main[len(self.at.main.children) - 1].value
-        self.assertIn(self.DOMAIN_NOTE, legend)
-        self.assertIn("R-4", legend)
-        self.assertIn("「未分類」", legend)
+    def note_count(self):
+        """領域の分類が案であることの注が、画面(本文とサイドバー)の Markdown の部品に何回出ているか。"""
+        return sum(t.count(self.DOMAIN_NOTE) for t in markdown_texts(self.at))
+
+    def test_領域の分類が案であることを_表が出ても出なくても_ちょうど_1_回出す(self):
+        def table_shown():
+            return any(d.key and d.key.startswith("表の選択:") for d in self.at.dataframe)
+
+        def only(companies, domains):
+            def change():
+                self.at.multiselect(key="企業").set_value(companies)
+                self.at.multiselect(key="領域").set_value(domains)
+                rerun(self.at, "--dummy")
+            return change
+
+        cases = [
+            ("表が出ている", lambda: None, True),
+            ("値が 0 件の領域だけ", only(["ダミー社A", "ダミー社B"], ["ダミー領域3"]), False),
+            ("企業 × 領域で 0 件(ダミー社B に ダミー領域1 の値は無い)", only(["ダミー社B"], ["ダミー領域1"]), False),
+            ("領域を全部外す", only(["ダミー社A", "ダミー社B"], []), False),
+            ("企業を全部外す", only([], ["ダミー領域1"]), False),
+        ]
+        for name, change, shown in cases:
+            with self.subTest(case=name):
+                self.at = start(APP, "--dummy")
+                change()
+                self.assertEqual(len(self.at.exception), 0)
+                self.assertEqual(table_shown(), shown)
+                self.assertEqual(self.note_count(), 1)
+                (caption,) = [c.value for c in self.at.main.caption if self.DOMAIN_NOTE in c.value]
+                self.assertIn("R-4", caption)
+                self.assertIn("「未分類」", caption)
+        # 凡例(本文のいちばん下)には書かない(同じ文を 2 か所に置かない)
+        self.at = start(APP, "--dummy")
+        self.assertNotIn(self.DOMAIN_NOTE, self.at.main[len(self.at.main.children) - 1].value)
 
     def test_詳細に領域が出る_別名_版つき_未分類(self):
         table = main_table(self.at)
@@ -607,6 +645,21 @@ class OfficialDomainsTest(OfficialDirMixin, unittest.TestCase):
     def setUp(self):
         super().setUp()
         shutil.copytree(FIXTURES, self.official)
+
+    def test_未分類だけを選んで_0_件のときも_補足の文が合う(self):
+        # 対応表に載ったベンチマーク(Bench-X)だけのデータで、未分類を選ぶと 0 件になる
+        records = json.loads((FIXTURES / "ダミー社B.json").read_text(encoding="utf-8"))["records"]
+        shutil.rmtree(self.official)
+        self.write("ダミー社B.json", {"records": [r for r in records if r["benchmark"] == "Bench-X"]})
+        at = start(self.app)
+        at.multiselect(key="領域").set_value(["未分類"])
+        rerun(at)
+        self.assertEqual(len(at.exception), 0)
+        self.assertIn("選んだ領域に当てはまる値が、まだありません。", [i.value for i in at.info])
+        note = next(c.value for c in at.main.caption if "選んだ企業の正式データ" in c.value)
+        # 未分類は「対応表に載っていないベンチマーク」なので、「対応表に載ったベンチマークの値」とは書かない
+        self.assertNotIn("対応表に載った", note)
+        self.assertIn("選んだ領域に入るベンチマークの値が無い", note)
 
     def test_対応表を読めれば表を出す(self):
         at = start(self.app)
