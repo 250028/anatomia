@@ -520,8 +520,8 @@ class MainTest(unittest.TestCase):
         get.assert_not_called()
         help_text = "".join(out.getvalue().split())
         self.assertIn("".join(hf_qwen.BEFORE_RUN.split()), help_text)
-        self.assertIn("Qwenの実取得についてのリーダーの判断は、まだ無い", help_text)
-        self.assertIn("実行の前に、リーダーの判断が要る。", help_text)
+        self.assertIn("Qwenの実取得には、その実行についてのリーダーの判断が要る", help_text)
+        self.assertIn("判断の範囲の外では実行しない。", help_text)
 
     def test_help_の判断の文は_docstring_の段落と同じ(self):
         self.assertIn(" ".join(hf_qwen.BEFORE_RUN.split()), " ".join(hf_qwen.__doc__.split()))
