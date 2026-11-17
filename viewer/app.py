@@ -380,7 +380,7 @@ else:
     row, column = pair
     # ベンチマークの説明(領域の対応表の写し。説明は文字列なので Markdown に渡さず st.text、URL は詳細と同じリンクの列で出す)
     description = domains.description_of(column.benchmark)
-    st.markdown("**このベンチマークは、何を評価するもの？**")
+    st.markdown("**このベンチマークが評価するもの**")
     if description is None:
         st.caption(NO_DESCRIPTION)
     else:

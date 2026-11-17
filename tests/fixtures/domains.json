@@ -1,10 +1,10 @@
 {
   "status": "proposal",
   "source": "tests/fixtures/domains.json",
-  "note": "ダミーの対応表(架空の領域・ベンチマーク)。画面を `-- --dummy` で動かすときと、テストで使う。ダミー領域3 は、当てはまる値が 0 件の領域。Bench-Y は別名で当てはまり、Bench-Z は対応表に無い(未分類)。説明があるのは Bench-X と Bench Y(別名 Bench-Y)だけで、Bench-V・Bench-W・Bench-Q には説明が無い",
+  "note": "ダミーの対応表(架空の領域・ベンチマーク)。画面を `-- --dummy` で動かすときと、テストで使う。ダミー領域3 は、当てはまる値が 0 件の領域。Bench-Y は別名で当てはまり、Bench-Z は対応表に無い(未分類)。説明があるのは Bench-V(版つきの列 Bench-V 2.1 で確かめる)・Bench-X・Bench Y(別名 Bench-Y)だけで、Bench-W・Bench-Q には説明が無い",
   "domains": ["ダミー領域1", "ダミー領域2", "ダミー領域3"],
   "benchmarks": [
-    {"benchmark": "Bench-V", "domain": "ダミー領域1", "aliases": []},
+    {"benchmark": "Bench-V", "domain": "ダミー領域1", "aliases": [], "description": "ダミーの説明(Bench-V。版つきの列でも出る)。", "description_source": "https://example.com/dummy-bench-v"},
     {"benchmark": "Bench-W", "domain": "ダミー領域1", "aliases": []},
     {"benchmark": "Bench-X", "domain": "ダミー領域2", "aliases": [], "description": "ダミーの説明(Bench-X)。*太字* や $x$ のような記号を含む。", "description_source": "https://example.com/dummy-bench-x"},
     {"benchmark": "Bench Y", "domain": "ダミー領域2", "aliases": ["Bench-Y"], "description": "ダミーの説明(Bench Y。別名で引く)。", "description_source": "https://example.com/dummy-bench-y"},

@@ -657,10 +657,19 @@ class DomainTest(unittest.TestCase):
         self.assertFalse(any("説明はまだありません" in c.value for c in self.at.caption))
         self.assertEqual(len(self.details()), 1)  # 詳細の表も出る
 
-    def test_説明は別名でも引け_版つきの列でも出る(self):
+    def test_説明は別名でも引ける(self):
         table = main_table(self.at)
         select_cell(self.at, row_index_of(table, "Model-A1", "Reasoning", "High"), "Bench-Y", "--dummy")
         self.assertIn("ダミーの説明(Bench Y。別名で引く)。", [t.value for t in self.at.text])
+
+    def test_版つきの列を選んでも_版を除いた名前で説明が出る(self):
+        table = main_table(self.at)
+        self.assertIn("Bench-V 2.1", list(table.columns))  # 列の見出しは「名前 版」
+        select_cell(self.at, row_index_of(table, "Model-A2", "（なし）", "（なし）"), "Bench-V 2.1", "--dummy")
+        self.assertEqual(len(self.at.exception), 0)
+        self.assertIn("ダミーの説明(Bench-V。版つきの列でも出る)。", [t.value for t in self.at.text])
+        (source,) = self.description_tables()
+        self.assertEqual(list(source.value["説明の出典 URL"]), ["https://example.com/dummy-bench-v"])
 
     def test_説明の無いベンチマークのセルを選ぶと_まだありませんと出る(self):
         table = main_table(self.at)
