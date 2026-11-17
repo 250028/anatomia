@@ -1,0 +1,18 @@
+モデル名,モデルの種類,推論モード,ベンチマーク名,ベンチマークの版・種類,スコア,単位,測定条件,取得元の表記,出典URL,取得日,取得者,READMEの版(sha),備考
+Claude Opus 5.5,,,Humanity's Last Exam,,67.7,%,with tools,67.7%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Claude Opus 5.5,,xhigh,Terminal-Bench,4.0,66.4,%,,66.4%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「Terminal-Bench 4.0¹」。脚注 1(本文はスクリーンショットに写っていない)
+Claude Opus 5.5,,,FrontierCode,v1.1 (Main),54.4,%,,54.4%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「FrontierCode v1.1 (Main)」
+Claude Opus 5.5,,,CursorBench,4.0,57.8,%,,57.8%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Claude Opus 5.5,,,GDPval-AA,v2.1,1846,,,1846,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像に単位の記載なし
+Claude Opus 5.5,,,AutomationBench,,40.0,%,,40.0%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「AutomationBench²」。脚注 2(本文はスクリーンショットに写っていない)
+Claude Opus 5.5,,,Terminal-Bench-Science,0.1,58.7,%,,58.7%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「Terminal-Bench-Science 0.1³」。脚注 3(本文はスクリーンショットに写っていない)
+Claude Opus 5.5,,,OSWorld,2.1,81.8,%,partial,81.8%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Claude Opus 5.5,,,Chartography,,89.0,%,with tools,89.0%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Fable 5,,,SWE-bench Pro,,80.3,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),80.3%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「SWE-Bench Pro」
+Fable 5,,xhigh,FrontierCode (Diamond),,29.3,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),29.3%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Fable 5,,,GDPval-AA,,1932,,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),1932,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像に単位の記載なし
+Fable 5,,,GDP.PDF,,29.8,%,no tools。Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),29.8%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「GDP.pdf」
+Fable 5,,,Blueprint-Bench 2,,38.6,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),38.6%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Fable 5,,,AutomationBench,,17.4,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),17.4%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
+Fable 5,,,OSWorld-Verified,,85.0,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),85.0%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。この行は列が強調されておらず、右隣の Mythos Preview(85.4%)が強調されている
+Fable 5,,,Legal Agent Benchmark,,13.3,%,Mythos 5 / Fable 5 の高いほうの値(差は 1〜3 点以内),13.3%,https://www.anthropic.com/news/claude-fable-5-mythos-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
