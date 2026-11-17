@@ -1,6 +1,6 @@
 モデル名,モデルの種類,推論モード,ベンチマーク名,ベンチマークの版・種類,スコア,単位,測定条件,取得元の表記,出典URL,取得日,取得者,READMEの版(sha),備考
 Claude Opus 5.5,,,Humanity's Last Exam,,67.7,%,with tools,67.7%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
-Claude Opus 5.5,,,Terminal-Bench,4.0,66.4,%,,66.4%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「Terminal-Bench 4.0¹」。脚注 1(本文はスクリーンショットに写っていない)
+Claude Opus 5.5,,xhigh,Terminal-Bench,4.0,66.4,%,,66.4%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「Terminal-Bench 4.0¹」。脚注 1(本文はスクリーンショットに写っていない)
 Claude Opus 5.5,,,FrontierCode,v1.1 (Main),54.4,%,,54.4%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像の表記は「FrontierCode v1.1 (Main)」
 Claude Opus 5.5,,,CursorBench,4.0,57.8,%,,57.8%,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り
 Claude Opus 5.5,,,GDPval-AA,v2.1,1846,,,1846,https://www.anthropic.com/claude-opus-5-5,2026-11-17,水戸,,水戸のスクリーンショットから読み取り。画像に単位の記載なし

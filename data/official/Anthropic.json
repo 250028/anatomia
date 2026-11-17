@@ -22,7 +22,7 @@
       "model": "Claude Opus 5.5",
       "provider": "Anthropic",
       "model_type": null,
-      "mode": null,
+      "mode": "xhigh",
       "benchmark": "Terminal-Bench",
       "benchmark_version": "4.0",
       "score": 66.4,
