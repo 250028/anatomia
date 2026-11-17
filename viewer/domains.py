@@ -9,13 +9,15 @@
   (大文字小文字の無視・空白の無視・部分一致・あいまいな一致はしない)
 - 版(`benchmark_version`)は見ない。対応表のキーは、版を除いたベンチマーク名(R-4 §3 の【案】)
 - 対応表に無いベンチマークは「未分類」(R-4 §3)
+- ベンチマークの説明(`description`)と出典 URL(`description_source`)は、行の任意のキー(2 つそろって付けるか、2 つとも無いか)。
+  R-4 §2 の「何を測るか」の写しで、説明も【案】。引き当ては領域と同じく、名前・別名の完全一致だけ
 - 領域ごとの「強・中・弱」・総合スコア・平均・順位は、ここでは扱わない(企画書 §8 Q-6 で【未決】)
 
 ロジック層なので `streamlit`・`requests`・`pandas` は import しない(tests/test_viewer_records.py で確かめる)。
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # 対応表に無いベンチマークの領域(R-4 §3)。表の並びでは、どの領域よりも後ろに置く
@@ -24,6 +26,8 @@ UNCLASSIFIED = "未分類"
 # ファイルの外形のキーと、`benchmarks` の 1 行のキー。これ以外のキーは誤り(正式データの検査と同じ流儀)
 TOP_KEYS = ("status", "source", "note", "domains", "benchmarks")
 ROW_KEYS = ("benchmark", "domain", "aliases")
+# 行の任意のキー。付けるなら 2 つともそろえる(出典の無い説明を作らない。企画書の「数値・判定には根拠を添える」と同じ流儀)
+OPTIONAL_ROW_KEYS = ("description", "description_source")
 # 対応表の状態。画面は「分類は案」と固定の文で出すので、案(proposal)以外は受け付けない。
 # 案でなくなったら、画面の文(viewer/app.py)と一緒にここを直す
 STATUS = "proposal"
@@ -38,11 +42,20 @@ class DomainError(ValueError):
 
 
 @dataclass(frozen=True)
+class BenchmarkDescription:
+    """ベンチマークが何を測るかの説明と、その出典 URL(R-4 §2 の写し。【案】)。"""
+
+    text: str
+    source_url: str
+
+
+@dataclass(frozen=True)
 class DomainMap:
     """読み込んだ対応表。`domains` は対応表の順(R-4 §2 の順)。`_lookup` は「名前・別名 → 領域」。"""
 
     domains: tuple[str, ...]
     _lookup: dict
+    _descriptions: dict = field(default_factory=dict)  # 「名前・別名 → BenchmarkDescription」。説明の無い行は入らない
 
     @property
     def choices(self):
@@ -60,6 +73,10 @@ class DomainMap:
         """ベンチマーク名(版を除いたもの)の領域。完全一致で引き、無ければ「未分類」。"""
         return self._lookup.get(benchmark, UNCLASSIFIED)
 
+    def description_of(self, benchmark):
+        """ベンチマーク名(版を除いたもの)の説明(`BenchmarkDescription`)。完全一致で引き、説明が無ければ None。"""
+        return self._descriptions.get(benchmark)
+
     def order(self, domain):
         """表で並べるときの領域の順番(0 から)。「未分類」は最後。"""
         return self.choices.index(domain)
@@ -74,15 +91,20 @@ def _is_name(value):
     return isinstance(value, str) and value != "" and value == value.strip()
 
 
-def _key_problems(raw, keys, where):
+def _key_problems(raw, keys, where, optional=()):
     problems = []
     missing = [k for k in keys if k not in raw]
     if missing:
         problems.append(f"{where}キーが足りない: " + "・".join(f"`{k}`" for k in missing))
-    extra = [k for k in raw if k not in keys]
+    extra = [k for k in raw if k not in keys and k not in optional]
     if extra:
         problems.append(f"{where}知らないキーがある: " + "・".join(f"`{k}`" for k in extra))
     return problems
+
+
+def _is_https_url(value):
+    """出典 URL として使える文字列か(https で始まり、空白を含まない)。"""
+    return isinstance(value, str) and value.startswith("https://") and len(value) > len("https://") and not any(c.isspace() for c in value)
 
 
 def domain_map_from_dict(data):
@@ -119,13 +141,14 @@ def domain_map_from_dict(data):
         problems.append("`benchmarks` が配列でない")
         rows = []
     lookup = {}
+    descriptions = {}
     first_seen = {}  # 名前・別名 → "N 件目"
     for i, row in enumerate(rows):
         where = f"`benchmarks` の {i + 1} 件目"
         if not isinstance(row, dict):
             problems.append(f"{where}: オブジェクトでない")
             continue
-        row_problems = _key_problems(row, ROW_KEYS, f"{where}: ")
+        row_problems = _key_problems(row, ROW_KEYS, f"{where}: ", OPTIONAL_ROW_KEYS)
         if row_problems:
             problems.extend(row_problems)
             continue
@@ -137,6 +160,17 @@ def domain_map_from_dict(data):
             problems.append(f"{where}: `aliases` が、前後に空白の無い文字列の配列でない: {aliases!r}")
         else:
             names += aliases
+        description = None
+        present = [k for k in OPTIONAL_ROW_KEYS if k in row]
+        if len(present) == 1:
+            problems.append(f"{where}: `description` と `description_source` は、2 つそろえて付ける(`{present[0]}` だけがある)")
+        elif present:
+            if not _is_name(row["description"]):
+                problems.append(f"{where}: `description` が、前後に空白の無い空でない文字列でない: {row['description']!r}")
+            elif not _is_https_url(row["description_source"]):
+                problems.append(f"{where}: `description_source` が、https:// で始まる URL(空白なし)でない: {row['description_source']!r}")
+            else:
+                description = BenchmarkDescription(row["description"], row["description_source"])
         domain = row["domain"]
         if domain not in seen_domains:
             problems.append(f"{where}: `domains` に無い領域を指している: {domain!r}")
@@ -148,9 +182,11 @@ def domain_map_from_dict(data):
                 continue
             first_seen[name] = f"{i + 1} 件目"
             lookup[name] = domain
+            if description is not None:
+                descriptions[name] = description
     if problems:
         raise DomainError(problems)
-    return DomainMap(tuple(seen_domains), lookup)
+    return DomainMap(tuple(seen_domains), lookup, descriptions)
 
 
 def load_domains(path):

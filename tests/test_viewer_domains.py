@@ -126,6 +126,46 @@ class DomainMapFromDictTest(unittest.TestCase):
         data["benchmarks"][0]["reason"] = "x"
         self.assertIn("`reason`", self.problems(data))
 
+    def test_説明と出典は任意で_付ければ名前と別名の両方で引ける(self):
+        data = valid()
+        data["benchmarks"][1]["description"] = "説明B"
+        data["benchmarks"][1]["description_source"] = "https://example.com/b"
+        m = domain_map_from_dict(data)
+        for name in ("Bench B", "Bench-B"):
+            d = m.description_of(name)
+            self.assertEqual((d.text, d.source_url), ("説明B", "https://example.com/b"))
+        self.assertIsNone(m.description_of("Bench-A"))  # 説明の無い行
+        self.assertIsNone(m.description_of("Bench-Z"))  # 対応表に無い名前
+        self.assertIsNone(m.description_of("bench b"))  # 完全一致だけ
+
+    def test_説明と出典は片方だけでは失敗(self):
+        for key in ("description", "description_source"):
+            with self.subTest(key=key):
+                data = valid()
+                data["benchmarks"][0][key] = "説明" if key == "description" else "https://example.com/a"
+                text = self.problems(data)
+                self.assertIn("1 件目", text)
+                self.assertIn("2 つそろえて", text)
+
+    def test_説明は空でない文字列_出典は_https_の_URL(self):
+        bad = [
+            ("", "https://example.com"),
+            (" 説明", "https://example.com"),
+            (1, "https://example.com"),
+            ("説明", ""),
+            ("説明", "http://example.com"),
+            ("説明", "example.com"),
+            ("説明", "https://exa mple.com"),
+            ("説明", "https://"),
+            ("説明", None),
+        ]
+        for description, source in bad:
+            with self.subTest(description=description, source=source):
+                data = valid()
+                data["benchmarks"][0]["description"] = description
+                data["benchmarks"][0]["description_source"] = source
+                self.assertIn("1 件目", self.problems(data))
+
     def test_別名は文字列の配列(self):
         for aliases in ("Bench-B", [""], [1], None):
             with self.subTest(aliases=aliases):
@@ -216,6 +256,15 @@ class RealDomainsTest(unittest.TestCase):
 
     def test_R4_の_12_行(self):
         self.assertEqual(len(self.raw["benchmarks"]), 12)
+
+    def test_R4_の_12_行の全部に説明と出典_URL_が付いている(self):
+        for row in self.raw["benchmarks"]:
+            with self.subTest(benchmark=row["benchmark"]):
+                d = self.map.description_of(row["benchmark"])
+                self.assertIsNotNone(d)
+                self.assertTrue(d.source_url.startswith("https://"))
+                for alias in row["aliases"]:
+                    self.assertEqual(self.map.description_of(alias), d)
 
     def test_別名は_Terminal_Bench_と_HLE_の_2_つだけ(self):
         aliases = {a: row["benchmark"] for row in self.raw["benchmarks"] for a in row["aliases"]}
