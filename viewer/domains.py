@@ -10,7 +10,7 @@
 - 版(`benchmark_version`)は見ない。対応表のキーは、版を除いたベンチマーク名(R-4 §3 の【案】)
 - 対応表に無いベンチマークは「未分類」(R-4 §3)
 - ベンチマークの説明(`description`)と出典 URL(`description_source`)は、行の任意のキー(2 つそろって付けるか、2 つとも無いか)。
-  R-4 §2 の「何を測るか」の写しで、説明も【案】。引き当ては領域と同じく、名前・別名の完全一致だけ
+  R-4 §2 の「何を測るか」をもとにしたもので、説明も【案】。引き当ては領域と同じく、名前・別名の完全一致だけ
 - 領域ごとの「強・中・弱」・総合スコア・平均・順位は、ここでは扱わない(企画書 §8 Q-6 で【未決】)
 
 ロジック層なので `streamlit`・`requests`・`pandas` は import しない(tests/test_viewer_records.py で確かめる)。
@@ -43,7 +43,7 @@ class DomainError(ValueError):
 
 @dataclass(frozen=True)
 class BenchmarkDescription:
-    """ベンチマークが何を測るかの説明と、その出典 URL(R-4 §2 の写し。【案】)。"""
+    """ベンチマークが何を測るかの説明と、その出典 URL(R-4 §2 をもとにしたもの。【案】)。"""
 
     text: str
     source_url: str
