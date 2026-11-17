@@ -1,0 +1,26 @@
+{
+  "status": "proposal",
+  "source": "docs/research/r4-benchmark-domains.md",
+  "note": "全体が【案】(R-4 の冒頭の注意)。領域の名前・数と、ベンチマークの分類は、決定として扱わない。分類の理由と確認状況は R-4 §2 が正で、ここは画面が読むための写し。当てはめは、正式データの benchmark との完全一致だけ(版は見ない。R-4 §3)。aliases は、正式データの書き方が R-4 の表の名前と違うもの(Terminal-Bench・HLE)だけを置く。対応表に無いベンチマークは「未分類」(R-4 §3)",
+  "domains": [
+    "コーディング",
+    "数学",
+    "科学的推論・知識",
+    "エージェント",
+    "マルチモーダル"
+  ],
+  "benchmarks": [
+    {"benchmark": "SWE-bench Verified", "domain": "コーディング", "aliases": []},
+    {"benchmark": "LiveCodeBench", "domain": "コーディング", "aliases": []},
+    {"benchmark": "Terminal-bench", "domain": "コーディング", "aliases": ["Terminal-Bench"]},
+    {"benchmark": "AIME", "domain": "数学", "aliases": []},
+    {"benchmark": "HMMT", "domain": "数学", "aliases": []},
+    {"benchmark": "GPQA Diamond", "domain": "科学的推論・知識", "aliases": []},
+    {"benchmark": "Humanity's Last Exam", "domain": "科学的推論・知識", "aliases": ["HLE"]},
+    {"benchmark": "MMLU-Pro", "domain": "科学的推論・知識", "aliases": []},
+    {"benchmark": "τ²-bench", "domain": "エージェント", "aliases": []},
+    {"benchmark": "BrowseComp", "domain": "エージェント", "aliases": []},
+    {"benchmark": "OSWorld", "domain": "エージェント", "aliases": []},
+    {"benchmark": "MMMU", "domain": "マルチモーダル", "aliases": []}
+  ]
+}

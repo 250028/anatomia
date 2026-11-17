@@ -1,8 +1,9 @@
 """Anatomia の画面(MVP)。「モデル×ベンチマーク」の表を、出典つきで 1 画面に出す。
 
 動かし方(リポジトリのルートで。起動したら、ブラウザで http://127.0.0.1:8501 を開く):
-    streamlit run viewer/app.py              → 正式データ(data/official/)を読む
-    streamlit run viewer/app.py -- --dummy   → ダミーデータ(tests/fixtures/official/)を読む(`--` の後ろが、このファイルへの引数)
+    streamlit run viewer/app.py              → 正式データ(data/official/)と領域の対応表(data/domains.json)を読む
+    streamlit run viewer/app.py -- --dummy   → ダミーデータ(tests/fixtures/official/)とダミーの対応表(tests/fixtures/domains.json)を読む
+                                               (`--` の後ろが、このファイルへの引数)
 
     起動の設定(自分の PC だけで待ち受ける・ブラウザを自動で開かない・利用状況を外へ送らない)と文字の大きさは、
     リポジトリのルートの .streamlit/config.toml に 1 か所でまとめ、理由もそこに書いた。Streamlit は「実行したディレクトリ」の
@@ -10,11 +11,13 @@
     Streamlit の既定(すべての口で待ち受ける・利用状況を送る・文字 16px)になる
 
 方針:
-- このファイルは「ロジック層(viewer/records.py・viewer/grid.py)の関数を呼んで、表示するだけ」にする。
-  表の作り方・未公表の判定・詳細の項目は、ロジック層が決める(企画書 §6-2 の「収集と表示を分ける理由」)
-- 画面からは取得(スクレイピング)もネットワークへのアクセスもしない。正式データのファイルを読むだけ(企画書 §6-1・§6-2)
-- 領域の列・強中弱・総合スコア・平均・順位・スコアでの並べ替え・色の濃淡は作らない
-  (企画書 §2-3 の「やらないこと」。領域単位の判定は §8 Q-6 で【未決】)
+- このファイルは「ロジック層(viewer/records.py・viewer/domains.py・viewer/grid.py)の関数を呼んで、表示するだけ」にする。
+  表の作り方・未公表の判定・領域の引き当てと並び・詳細の項目は、ロジック層が決める(企画書 §6-2 の「収集と表示を分ける理由」)
+- 画面からは取得(スクレイピング)もネットワークへのアクセスもしない。正式データと対応表のファイルを読むだけ(企画書 §6-1・§6-2)
+- ベンチマークを、領域の対応表(R-4。全体が【案】)の領域で絞り込み、領域ごとに並べ、各ベンチマークの領域を出す。
+  強・中・弱、総合スコア・平均・合計・順位、スコアでの並べ替え、色の濃淡、モデル×領域に集約したセルは作らない
+  (§2-3 の「やらないこと」は単一の総合スコアによる順位づけ。領域単位の「強・中・弱」の算出方法は §8 Q-6 で【未決】で、
+  §3-4 の暫定ルールは【案】)
 - Streamlit は、操作のたびにこのファイルを 1 行目から実行し直す。上から順に読めば、画面の上から順に対応する
 - データ由来の文字列(企業名・モデル名・ベンチマーク名・読めない理由など)は、Markdown として描く部品
   (st.markdown・st.info・st.error・st.caption など)に渡さない。`*`・`_`・`$…$`・`|` などが太字や数式になるため。
@@ -34,10 +37,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from viewer.grid import (  # noqa: E402(上の sys.path の後で import する)
+from viewer.domains import DomainError, load_domains  # noqa: E402(上の sys.path の後で import する)
+from viewer.grid import (  # noqa: E402
     build_grid,
     cell_position,
     companies,
+    count_by_domain,
     detail_items,
     filter_by_company,
     label_conflicts,
@@ -51,14 +56,17 @@ from viewer.grid import (  # noqa: E402(上の sys.path の後で import する)
 )
 from viewer.records import RecordError, load_official  # noqa: E402
 
-# 読むデータの場所は、ここの 2 つだけに書く
+# 読むデータの場所は、ここの 4 つだけに書く
 OFFICIAL_DIR = REPO_ROOT / "data" / "official"  # 照合済みの正式データ(企画書 §3-3)
 DUMMY_DIR = REPO_ROOT / "tests" / "fixtures" / "official"  # 架空の会社・モデル・値
+DOMAINS_FILE = REPO_ROOT / "data" / "domains.json"  # ベンチマーク→領域の対応表(企画書 §3-3。中身は R-4 で、全体が【案】)
+DUMMY_DOMAINS_FILE = REPO_ROOT / "tests" / "fixtures" / "domains.json"  # 架空の領域の対応表
 
 # ダミーを読むのは、起動のときに `-- --dummy` を付けたときだけ。
 # 正式データが無いときに、黙ってダミーへ切り替えることはしない(架空の値を、本物と取り違えないため)
 USE_DUMMY = "--dummy" in sys.argv[1:]
 DATA_DIR = DUMMY_DIR if USE_DUMMY else OFFICIAL_DIR
+DOMAINS_PATH = DUMMY_DOMAINS_FILE if USE_DUMMY else DOMAINS_FILE
 
 # 企画書 §4-4「有効性の限界」の 3 つ。文面は企画書を正とし、ここは写し(本文中の節の参照だけを外した)
 LIMITS = [
@@ -74,6 +82,18 @@ LIMITS = [
 NOT_PUBLISHED_MARK = "—"
 # 未公表の記号の文字色。値のある文字より薄くする(明るい背景でも暗い背景でも読める灰色)。値のあるセルの濃淡はしない
 NOT_PUBLISHED_COLOR = "#9aa0a6"
+
+# 領域についての固定の文(データ由来の文字は混ぜない)。語は R-4 に合わせる(領域・対応表・未分類・案)。
+# 表が出ないとき(企業・領域を全部外した、選んだ領域の値が 0 件)にも出すため、本文の上部に 1 回だけ出す(下の「1-2」)
+DOMAIN_NOTE = "領域の分類は案です（R-4：`docs/research/r4-benchmark-domains.md`）。対応表に無いベンチマークは「未分類」です。"
+# 選んだ領域に当てはまる値が 0 件のとき。「未公表」(会社がそのベンチマークの値を出していないセル)とは別のことなので、言葉を分ける。
+# 補足の文は、「未分類」を選んだとき(対応表に載っていないベンチマーク)にも合う書き方にする。
+# この状態では表も凡例も出ないので、「—」の記号には触れず、未公表の意味を言葉で書く
+EMPTY_DOMAIN_MESSAGE = "選んだ領域に当てはまる値が、まだありません。"
+EMPTY_DOMAIN_NOTE = (
+    "選んだ企業の正式データに、選んだ領域に入るベンチマークの値が無い、ということです。"
+    "「未公表」（会社が、あるベンチマークの値を公表していないこと）とは意味が違います。"
+)
 
 MODELS_AS_ROWS = "モデルを行に"
 BENCHMARKS_AS_ROWS = "ベンチマークを行に"
@@ -117,9 +137,13 @@ SIDEBAR_INITIAL_STATE = "collapsed"
 #   中のボタンと同じ大きさになるよう flex にする)。メニューは本文の帯より上に重なり(z-index)、開いている間は変形
 #   (transform)が無いので、position: fixed で画面に対して固定できる。メニューの見出しの行は高さを持ったまま残り、
 #   ボタンはその空きの中に入るので、メニューの中身の先頭とは重ならない
-# 頼る名前(stMain・stSidebar・data-collapsed・stSidebarResizeHandle・stSidebarCollapseButton・stExpandSidebarButton)は
+# - 本文の中身の左右の余白(stMainBlockContainer。layout="wide" で 1.67.0 の既定は左右 5rem = 90px〔文字 18px のとき〕)を
+#   1rem に詰め、表の幅を広くとる。1 つの領域の表(実データでモデル 19 行 × ベンチマーク 6 列)が、幅 1366px の画面で
+#   横スクロールなしに入るようにするため(左右の余白が 5rem のままだと、表の中の幅が約 90px 足りなかった。2026-11-17)。
+#   上の余白はそのまま(開く・閉じるボタンと本文の先頭が重ならないように)
+# 頼る名前(stMain・stMainBlockContainer・stSidebar・data-collapsed・stSidebarResizeHandle・stSidebarCollapseButton・stExpandSidebarButton)は
 # 1.67.0 の同梱コード(static/js/index.*.js)にある。版が変わって名前が変わると効かなくなるが、画面は壊れない
-# (メニューが本文を押して狭くする・幅を変えられる・ボタンが元の位置に戻る、元の動きに戻るだけ)
+# (メニューが本文を押して狭くする・幅を変えられる・ボタンが元の位置に戻る・本文の左右の余白が広い、元の動きに戻るだけ)
 SIDEBAR_CSS = f"""<style>
 main[data-testid="stMain"] {{
     position: absolute !important;
@@ -128,6 +152,10 @@ main[data-testid="stMain"] {{
     right: 0;
     bottom: 0;
     height: 100dvh;
+}}
+[data-testid="stMainBlockContainer"] {{
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
 }}
 section[data-testid="stSidebar"][data-collapsed="false"] {{
     width: {SIDEBAR_WIDTH_PX}px !important;
@@ -224,14 +252,50 @@ if not records:
 
 st.sidebar.caption(f"`{shown_path(DATA_DIR)}` から {len(records)} 件のスコアを読みました。")
 
+# ---- 3-2. 領域の対応表を読む。無い・読めないときは、本文に理由を出して止める ----
+# 対応表が無いのに全部を「未分類」で出すと、対応表の誤りに気づけないので、正式データと同じく止める
+try:
+    domains = load_domains(DOMAINS_PATH)
+except (FileNotFoundError, IsADirectoryError):
+    st.error(f"領域の対応表がありません：`{shown_path(DOMAINS_PATH)}`")
+    st.markdown("ベンチマーク→領域の対応表を `data/domains.json` に置くと、表が出ます（企画書 §3-3・R-4）。")
+    st.stop()
+except DomainError as e:
+    st.error(f"領域の対応表に読めないところが {len(e.problems)} 件あるため、表を出しません。")
+    st.code("\n".join(e.problems), language=None)
+    st.stop()
+
+# ---- 1-2. 本文の上部：領域の分類が案であること(常に出す。表が出ないときにも出すので、絞り込みで止まるより前に置く) ----
+st.caption(DOMAIN_NOTE)
+
 # ---- 4. サイドバー：企業の絞り込み ----
 all_companies = companies(records)
 selected = st.sidebar.multiselect("企業で絞り込む", options=all_companies, default=all_companies, key="企業")
+
+# ---- 4-2. サイドバー：領域の絞り込み(企業の下) ----
+# 開いた直後は、対応表の最初の領域だけを選ぶ(domains.initial_selection)。全部を選んで始めると、ベンチマークが多く
+# (2026-11-17 の正式データで 87 列)、どちらの向きでも表が画面の幅からはみ出し、横スクロールが出るため。
+# 領域は 1 つずつ見ても、複数を選んでもよい(選んだ後は、利用者の選択を保つ)
+# 件数は、読み込んだ全企業のスコアの数。企業の絞り込みで数え直すと、選択肢の文字が変わり、
+# Streamlit 1.67.0 の multiselect は選択を選択肢の文字で覚えるため、選んでいた領域が外れるおそれがある
+domain_counts = count_by_domain(records, domains)
+all_domains = list(domains.choices)
+selected_domains = st.sidebar.multiselect(
+    "領域で絞り込む",
+    options=all_domains,
+    default=list(domains.initial_selection),
+    key="領域",
+    format_func=lambda domain: f"{domain}（{domain_counts[domain]} 件）",
+)
+st.sidebar.caption("件数は、読み込んだ全企業のスコアの数です。")
 if not selected:
     st.info("企業を 1 つ以上選ぶと、表が出ます。")
     st.stop()
+if not selected_domains:
+    st.info("領域を 1 つ以上選ぶと、表が出ます。")
+    st.stop()
 shown = filter_by_company(records, selected)
-grid = build_grid(shown)
+grid = build_grid(shown, domains, selected_domains)
 
 # ---- 5. サイドバー：表の向き ----
 # 既定は、絞り込み後のデータで「列の数が少なくなるほう」(grid.prefers_transposed)。
@@ -254,6 +318,12 @@ last_retrieved = "、".join(f"{company} {day}" for company, day in last_retrieve
 st.text(f"{LIMITS[0]}（限界の全文は左のメニュー）。　最終取得日（企業ごと）：{last_retrieved}")
 
 # ---- 7. 「モデル × ベンチマーク」の表 ----
+if not grid.columns:
+    # 選んだ領域に、当てはまるベンチマークの値が 1 件も無い。表は出さず、未公表とは別の言葉で伝える
+    st.info(EMPTY_DOMAIN_MESSAGE)
+    st.caption(EMPTY_DOMAIN_NOTE)
+    st.stop()
+
 conflicts = label_conflicts(grid, transposed)
 if conflicts:
     # 見出しが重なると、選んだ列を見出しから引けず、人も見分けられないので止める
@@ -264,8 +334,9 @@ if conflicts:
 
 if transposed:
     header, rows = transposed_header(grid), transposed_rows(grid, not_published=NOT_PUBLISHED_MARK)
-    pinned_columns = header[:1]  # ベンチマーク名の列
+    pinned_columns = header[: len(header) - len(grid.rows)]  # ベンチマーク名・領域の列
 else:
+    # 1 行目は領域の行(ベンチマークの列ごとの領域)
     header, rows = table_header(grid), table_rows(grid, not_published=NOT_PUBLISHED_MARK)
     pinned_columns = header[: len(header) - len(grid.columns)]  # 提供企業・モデル・種類・推論モード
 
@@ -283,9 +354,9 @@ event = st.dataframe(
     # (st.dataframe の docstring「When column selections are enabled, column sorting is disabled.」)。
     # 並べ替えを出さないために付けている。列を選んでも、この画面では何もしない
     selection_mode=["single-cell", "single-column"],
-    # 選んだセルは「何行目・どの列」で覚えられる。絞り込みや向きを変えると、同じ番号が別のセルを指すので、
-    # 絞り込みと向きを key に入れ、どちらかを変えたら選択を外す
-    key=f"表の選択:{orientation}:" + "|".join(sorted(selected)),
+    # 選んだセルは「何行目・どの列」で覚えられる。絞り込み(企業・領域)や向きを変えると、同じ番号が別のセルを指すので、
+    # 絞り込みと向きを key に入れ、どれかを変えたら選択を外す
+    key=f"表の選択:{orientation}:" + "|".join(sorted(selected)) + ":" + "|".join(sorted(selected_domains)),
 )
 
 # ---- 8. 選んだセルの詳細(表の下、凡例の上) ----
@@ -295,12 +366,12 @@ pair = pair_at(grid, *selected_cells[0], transposed=transposed) if selected_cell
 if not selected_cells:
     st.caption("表のセルを選ぶと、ここに詳細（出典 URL・取得日など）が出ます。")
 elif pair is None:
-    # 提供企業・モデルなどの列や、提供企業の行を選んだとき
+    # 提供企業・モデルなどの列や、領域の行・列、提供企業の行を選んだとき
     st.caption("スコアのセル（ベンチマークとモデルが交わるところ）を選ぶと、詳細が出ます。")
 else:
     # 番号は、pair_at で行と列の値(ModelRow・BenchmarkColumn)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
     row, column = pair
-    items = detail_items(grid.cell_at(row, column))
+    items = detail_items(grid.cell_at(row, column), domains)
     if not items:
         st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")
         st.text(f"{row.label} × {column.label}")

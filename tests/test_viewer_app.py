@@ -26,6 +26,8 @@ except ImportError:
 REPO_ROOT = Path(__file__).resolve().parent.parent
 APP = REPO_ROOT / "viewer" / "app.py"
 FIXTURES = REPO_ROOT / "tests" / "fixtures" / "official"
+# ダミーの対応表(ダミー領域1：Bench-V・Bench-W、ダミー領域2：Bench-X・Bench-Y、ダミー領域3：値なし、Bench-Z は未分類)
+DOMAINS_FIXTURE = REPO_ROOT / "tests" / "fixtures" / "domains.json"
 # 最初の実行は streamlit の import で数秒かかることがあるので、待ち時間を長めにとる
 TIMEOUT = 60
 SKIP_REASON = "streamlit が入っていない(画面のテストは skip)"
@@ -45,6 +47,17 @@ def start(app, *args):
     return rerun(AppTest.from_file(str(app), default_timeout=TIMEOUT), *args)
 
 
+# ダミーの対応表の領域の全部(対応表の順で、最後に未分類)
+ALL_DUMMY_DOMAINS = ["ダミー領域1", "ダミー領域2", "ダミー領域3", "未分類"]
+
+
+def select_all_domains(at, *args):
+    """領域を全部選んだ状態にして、実行し直す。開いた直後は対応表の最初の領域だけを選ぶので
+    (横スクロールを避けるため。viewer/domains.py の initial_selection)、全部の列の表を前提にするテストはこれを呼ぶ。"""
+    at.multiselect(key="領域").set_value(ALL_DUMMY_DOMAINS)
+    return rerun(at, *args)
+
+
 def tables(at, first_column):
     """先頭の列の見出しで、表を見分ける。モデル×ベンチマークは「提供企業」、最終取得日は「企業」、詳細は「モデル」。"""
     return [d.value for d in at.dataframe if list(d.value.columns)[:1] == [first_column]]
@@ -54,6 +67,12 @@ def main_table(at):
     found = tables(at, "提供企業")
     assert len(found) == 1, f"モデル×ベンチマークの表が {len(found)} 個ある"
     return found[0]
+
+
+def model_rows(table):
+    """元の向きの表から、1 行目の領域の行を除いた、モデルの行だけ。"""
+    assert table.iloc[0]["提供企業"] == "領域"
+    return table.iloc[1:]
 
 
 def main_element(at):
@@ -102,7 +121,8 @@ def fixture_record(**overrides):
 
 
 class OfficialDirMixin:
-    """一時ディレクトリに viewer/ を写し、`data/official/` を自分で作って app を動かす。"""
+    """一時ディレクトリに viewer/ を写し、`data/official/` を自分で作って app を動かす。
+    領域の対応表(`data/domains.json`)は、ダミーの対応表の写しを置いておく(対応表のテストでは、消したり書き換えたりする)。"""
 
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -110,6 +130,9 @@ class OfficialDirMixin:
         shutil.copytree(REPO_ROOT / "viewer", self.root / "viewer", ignore=shutil.ignore_patterns("__pycache__"))
         self.app = self.root / "viewer" / "app.py"
         self.official = self.root / "data" / "official"
+        self.domains = self.root / "data" / "domains.json"
+        self.domains.parent.mkdir(parents=True)
+        shutil.copy(DOMAINS_FIXTURE, self.domains)
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -127,8 +150,10 @@ class OfficialDirMixin:
 
 @unittest.skipIf(AppTest is None, SKIP_REASON)
 class DummyDataTest(unittest.TestCase):
+    """全部の領域を選んだ状態の表(開いた直後の状態は InitialViewTest)。"""
+
     def setUp(self):
-        self.at = start(APP, "--dummy")
+        self.at = select_all_domains(start(APP, "--dummy"), "--dummy")
 
     def select(self, row_index, column_label):
         return select_cell(self.at, row_index, column_label, "--dummy")
@@ -179,26 +204,32 @@ class DummyDataTest(unittest.TestCase):
             self.assertNotIn(name, html.proto.body)
 
     def test_絞り込みと向きの切り替えはサイドバーにある(self):
-        self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業"])
+        self.assertEqual([m.key for m in self.at.sidebar.multiselect], ["企業", "領域"])  # 領域は企業の下
         self.assertEqual([r.key for r in self.at.sidebar.radio], ["表の向き"])
 
-    def test_本文は_ダミーの表示_常に出す_1_行_表_詳細_凡例の順(self):
+    def test_本文は_ダミーの表示_領域の注_常に出す_1_行_表_詳細_凡例の順(self):
+        # 領域の分類が案であることの注は、表が出ないときにも出すため、絞り込みで止まるより前(ダミーの表示の次)に置いた
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]  # 本文の直下の部品の並び
-        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "caption", "caption"])
+        self.assertEqual(
+            [e.type for e in parts], ["warning", "caption", "text", "dataframe", "markdown", "caption", "caption"]
+        )
         self.assertIn("ダミーデータ", parts[0].value)
-        self.assertIn("自己申告", parts[1].value)
-        self.assertEqual(parts[3].value, "**選んだセルの詳細**")  # 詳細は表の下
-        self.assertIn("セルを選ぶと", parts[4].value)
-        self.assertIn("未公表", parts[5].value)  # 凡例の全文は本文のいちばん下
+        self.assertIn("領域の分類は案です", parts[1].value)
+        self.assertIn("自己申告", parts[2].value)
+        self.assertEqual(parts[4].value, "**選んだセルの詳細**")  # 詳細は表の下
+        self.assertIn("セルを選ぶと", parts[5].value)
+        self.assertIn("未公表", parts[6].value)  # 凡例の全文は本文のいちばん下
         self.assertEqual(len(self.at.expander), 0)
 
     def test_セルを選ぶと_詳細は表と凡例の間に出る(self):
         i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
         self.select(i, "Bench-W")
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]
-        self.assertEqual([e.type for e in parts], ["warning", "text", "dataframe", "markdown", "dataframe", "caption"])
-        self.assertEqual(list(parts[4].value.columns)[:1], ["モデル"])
-        self.assertIn("未公表", parts[5].value)
+        self.assertEqual(
+            [e.type for e in parts], ["warning", "caption", "text", "dataframe", "markdown", "dataframe", "caption"]
+        )
+        self.assertEqual(list(parts[5].value.columns)[:1], ["モデル"])
+        self.assertIn("未公表", parts[6].value)
 
     def test_メニューは最初は閉じる設定(self):
         # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
@@ -212,9 +243,10 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(sorted(k for k, v in config.items() if v.get("pinned")), sorted(["提供企業", "モデル", "種類", "推論モード"]))
         self.assertEqual(element.proto.row_height, 27)
 
-    def test_表は_6_行で_順位や平均の列が無い(self):
+    def test_表は_領域の行とモデルの_6_行で_順位や平均の列が無い(self):
+        # 1 行目は領域の行(ベンチマークの領域を出す。領域の絞り込みと並びを足したときに足した)
         table = main_table(self.at)
-        self.assertEqual(len(table), 6)
+        self.assertEqual(len(model_rows(table)), 6)
         self.assertEqual(
             list(table.columns),
             ["提供企業", "モデル", "種類", "推論モード", "Bench-V 2.1", "Bench-W", "Bench-X", "Bench-Y", "Bench-Z"],
@@ -276,16 +308,16 @@ class DummyDataTest(unittest.TestCase):
         rerun(self.at, "--dummy")
         self.assertEqual(self.at.radio(key="表の向き").value, "ベンチマークを行に")
         (table,) = tables(self.at, "ベンチマーク")
-        self.assertEqual(list(table.columns), ["ベンチマーク", "Model-B1", "Model-B2 (Max)"])
+        self.assertEqual(list(table.columns), ["ベンチマーク", "領域", "Model-B1", "Model-B2 (Max)"])
         self.assertEqual(list(table["ベンチマーク"]), ["提供企業", "Bench-X", "Bench-Y", "Bench-Z"])
-        self.assertEqual(table.iloc[0].tolist(), ["提供企業", "ダミー社B", "ダミー社B"])
+        self.assertEqual(table.iloc[0].tolist(), ["提供企業", "", "ダミー社B", "ダミー社B"])
         self.assertIn("最終取得日（企業ごと）：ダミー社B 2026-10-15", top_line(self.at))
         self.assertNotIn("ダミー社A", top_line(self.at))
         # 全社に戻すと、モデル 6・ベンチマーク 5 なので、モデルを行にに戻る(自分で切り替えていないため)
         self.at.multiselect(key="企業").set_value(["ダミー社A", "ダミー社B"])
         rerun(self.at, "--dummy")
         self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")
-        self.assertEqual(len(main_table(self.at)), 6)
+        self.assertEqual(len(model_rows(main_table(self.at))), 6)
 
     def test_企業を全部外すと表を出さずに案内する(self):
         self.at.multiselect(key="企業").set_value([])
@@ -369,7 +401,7 @@ class DummyDataTest(unittest.TestCase):
         rerun(self.at, "--dummy")
         self.assertEqual(len(self.at.exception), 0)
         (table,) = tables(self.at, "ベンチマーク")  # 絞った後の既定の向き
-        self.assertEqual(table.iloc[0].tolist()[1:], ["ダミー社B", "ダミー社B"])
+        self.assertEqual(table.iloc[0].tolist()[2:], ["ダミー社B", "ダミー社B"])  # 2 列目は領域の列
         self.assertEqual(self.details(), [])
         self.assertTrue(any("セルを選ぶと、ここに詳細" in c.value for c in self.at.caption))
 
@@ -385,15 +417,16 @@ class DummyDataTest(unittest.TestCase):
         self.transpose()
         self.assertEqual(len(self.at.exception), 0)
         (table,) = tables(self.at, "ベンチマーク")
-        self.assertEqual(list(table.columns)[1:], [
+        self.assertEqual(list(table.columns)[1], "領域")
+        self.assertEqual(list(table.columns)[2:], [
             "Model-A1 (Instruct)", "Model-A1 (Reasoning / High)", "Model-A1 (Reasoning / Non-Think)",
             "Model-A2", "Model-B1", "Model-B2 (Max)",
         ])
         self.assertEqual(list(table["ベンチマーク"]), ["提供企業", "Bench-V 2.1", "Bench-W", "Bench-X", "Bench-Y", "Bench-Z"])
         self.assertEqual(table.loc[2, "Model-A1 (Reasoning / High)"], "55.1% / 63.4%※")
         # セルの総数と、未公表・※ の数は、向きを変えても同じ
-        before = normal.iloc[:, 4:].values.ravel().tolist()
-        after = table.iloc[1:, 1:].values.ravel().tolist()
+        before = model_rows(normal).iloc[:, 4:].values.ravel().tolist()  # 領域の行を除く
+        after = table.iloc[1:, 2:].values.ravel().tolist()  # 提供企業の行と、ベンチマーク名・領域の列を除く
         self.assertEqual(len(before), len(after))
         self.assertEqual(before.count(MARK), after.count(MARK))
         self.assertEqual(after.count(MARK), 19)
@@ -402,7 +435,7 @@ class DummyDataTest(unittest.TestCase):
         self.assertEqual(sum("※" in c for c in before), sum("※" in c for c in after))
         (element,) = [d for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
         config = json.loads(element.proto.columns)
-        self.assertEqual([k for k, v in config.items() if v.get("pinned")], ["ベンチマーク"])
+        self.assertEqual([k for k, v in config.items() if v.get("pinned")], ["ベンチマーク", "領域"])
         # セルの選択と、並べ替えを止めるための列の選択は、どちらの向きでも同じ
         self.assertEqual(list(element.proto.selection_mode), modes_before)
 
@@ -418,7 +451,7 @@ class DummyDataTest(unittest.TestCase):
 
     def test_入れ替えた向きで提供企業の行やベンチマーク名の列を選んでも詳細は出ない(self):
         self.transpose()
-        for row_index, column in ((0, "Model-A2"), (1, "ベンチマーク")):
+        for row_index, column in ((0, "Model-A2"), (1, "ベンチマーク"), (1, "領域")):
             with self.subTest(row=row_index, column=column):
                 self.select(row_index, column)
                 self.assertEqual(len(self.at.exception), 0)
@@ -442,7 +475,283 @@ class DummyDataTest(unittest.TestCase):
         self.at.multiselect(key="企業").set_value(["ダミー社B"])
         rerun(self.at, "--dummy")
         self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")
-        self.assertEqual(set(main_table(self.at)["提供企業"]), {"ダミー社B"})
+        self.assertEqual(set(model_rows(main_table(self.at))["提供企業"]), {"ダミー社B"})
+
+
+@unittest.skipIf(AppTest is None, SKIP_REASON)
+class InitialViewTest(unittest.TestCase):
+    """開いた直後(何も操作していない)の見え方。横スクロールを避けるため、領域は対応表の最初の 1 つだけを選ぶ。"""
+
+    def setUp(self):
+        self.at = start(APP, "--dummy")
+
+    def test_開いた直後は対応表の最初の領域だけを選び_選択肢は全部ある(self):
+        widget = self.at.multiselect(key="領域")
+        self.assertEqual(widget.value, ["ダミー領域1"])
+        self.assertEqual(len(widget.options), 4)
+
+    def test_開いた直後の表は_最初の領域の列だけで_モデルの行は全部(self):
+        self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")  # モデル 6・ベンチマーク 2
+        table = main_table(self.at)
+        self.assertEqual(list(table.columns)[4:], ["Bench-V 2.1", "Bench-W"])
+        self.assertEqual(table.iloc[0].tolist()[4:], ["ダミー領域1", "ダミー領域1"])
+        self.assertEqual(len(model_rows(table)), 6)  # 値の無いモデルの行も残す(未公表を見せる)
+
+    def test_本文の左右の余白を詰める_CSS_がある(self):
+        # 表の幅を少しでも広くとり、1 つの領域の表が 1366px の画面に横スクロールなしで入るようにする
+        (html,) = self.at.html
+        self.assertIn('[data-testid="stMainBlockContainer"]', html.proto.body)
+        self.assertIn("padding-left: 1rem", html.proto.body)
+        self.assertIn("padding-right: 1rem", html.proto.body)
+
+
+@unittest.skipIf(AppTest is None, SKIP_REASON)
+class DomainTest(unittest.TestCase):
+    """領域での絞り込みと並び(ダミーの対応表 tests/fixtures/domains.json)。"""
+
+    DOMAIN_NOTE = "領域の分類は案です"
+    EMPTY_DOMAIN = "選んだ領域に当てはまる値が、まだありません。"
+
+    def setUp(self):
+        self.at = select_all_domains(start(APP, "--dummy"), "--dummy")
+
+    def set_domains(self, domains):
+        self.at.multiselect(key="領域").set_value(domains)
+        return rerun(self.at, "--dummy")
+
+    def details(self):
+        return tables(self.at, "モデル")
+
+    def test_領域の選択肢は対応表の順で未分類が最後_件数を添える(self):
+        widget = self.at.multiselect(key="領域")
+        self.assertEqual(widget.label, "領域で絞り込む")
+        self.assertEqual(widget.options, [
+            "ダミー領域1（3 件）", "ダミー領域2（7 件）", "ダミー領域3（0 件）", "未分類（2 件）",
+        ])
+
+    def test_件数は全企業のスコアの数で_企業で絞っても変わらず選択も保つ(self):
+        # 件数を企業の絞り込みで変えると、選択肢の文字が変わり、選んでいた領域が外れるおそれがあるため、全企業で数える
+        self.set_domains(["ダミー領域2"])
+        self.at.multiselect(key="企業").set_value(["ダミー社B"])
+        rerun(self.at, "--dummy")
+        widget = self.at.multiselect(key="領域")
+        self.assertEqual(widget.options[1], "ダミー領域2（7 件）")
+        self.assertEqual(widget.value, ["ダミー領域2"])
+        self.assertTrue(any("件数は、読み込んだ全企業" in c.value for c in self.at.sidebar.caption))
+
+    def test_元の向きでは_1_行目に各ベンチマークの領域が出る(self):
+        table = main_table(self.at)
+        self.assertEqual(
+            table.iloc[0].tolist(),
+            ["領域", "", "", "", "ダミー領域1", "ダミー領域1", "ダミー領域2", "ダミー領域2", "未分類"],
+        )
+
+    def test_入れ替えた向きでは_2_列目に各ベンチマークの領域が出る(self):
+        self.at.radio(key="表の向き").set_value("ベンチマークを行に")
+        rerun(self.at, "--dummy")
+        (table,) = tables(self.at, "ベンチマーク")
+        self.assertEqual(
+            table[["ベンチマーク", "領域"]].values.tolist(),
+            [["提供企業", ""], ["Bench-V 2.1", "ダミー領域1"], ["Bench-W", "ダミー領域1"],
+             ["Bench-X", "ダミー領域2"], ["Bench-Y", "ダミー領域2"], ["Bench-Z", "未分類"]],
+        )
+
+    def test_領域で絞ると_その領域のベンチマークだけになり_モデルの行は残る(self):
+        self.set_domains(["ダミー領域2"])
+        self.at.radio(key="表の向き").set_value("モデルを行に")
+        rerun(self.at, "--dummy")
+        table = main_table(self.at)
+        self.assertEqual(list(table.columns)[4:], ["Bench-X", "Bench-Y"])
+        self.assertEqual(len(model_rows(table)), 6)  # 値の無いモデル(Model-A2 の Bench-Y など)も行に残す
+        self.assertEqual(table.iloc[0].tolist()[4:], ["ダミー領域2", "ダミー領域2"])
+
+    def test_未分類だけで絞る(self):
+        self.set_domains(["未分類"])
+        self.assertEqual(len(self.at.exception), 0)
+        (table,) = [d.value for d in self.at.dataframe if d.key and d.key.startswith("表の選択:")]
+        self.assertIn("Bench-Z", table.values.ravel().tolist() + list(table.columns))
+        self.assertNotIn("Bench-X", table.values.ravel().tolist() + list(table.columns))
+
+    def test_値の無い領域は_未公表でなく_当てはまる値が無いと出す(self):
+        self.set_domains(["ダミー領域3"])
+        self.assertEqual(len(self.at.exception), 0)
+        self.assertFalse(any(d.key and d.key.startswith("表の選択:") for d in self.at.dataframe))
+        self.assertIn(self.EMPTY_DOMAIN, [i.value for i in self.at.info])
+        self.assertFalse(any("選んだセルは「未公表」" in i.value for i in self.at.info))
+        note = next(c.value for c in self.at.main.caption if "選んだ企業の正式データ" in c.value)
+        self.assertIn("「未公表」（会社が、あるベンチマークの値を公表していないこと）とは意味が違います", note)
+        self.assertNotIn("—", note)  # この状態では凡例(「—」の意味)が出ないので、記号に頼らない
+        self.assertIn("自己申告", top_line(self.at))  # 常に出す 1 行は残す
+
+    def test_領域を全部外すと表を出さずに案内する(self):
+        self.set_domains([])
+        self.assertEqual(len(self.at.exception), 0)
+        self.assertEqual(len(self.at.dataframe), 0)
+        self.assertTrue(any("領域を 1 つ以上" in i.value for i in self.at.info))
+
+    def note_count(self):
+        """領域の分類が案であることの注が、画面(本文とサイドバー)の Markdown の部品に何回出ているか。"""
+        return sum(t.count(self.DOMAIN_NOTE) for t in markdown_texts(self.at))
+
+    def test_領域の分類が案であることを_表が出ても出なくても_ちょうど_1_回出す(self):
+        def table_shown():
+            return any(d.key and d.key.startswith("表の選択:") for d in self.at.dataframe)
+
+        def only(companies, domains):
+            def change():
+                self.at.multiselect(key="企業").set_value(companies)
+                self.at.multiselect(key="領域").set_value(domains)
+                rerun(self.at, "--dummy")
+            return change
+
+        cases = [
+            ("表が出ている", lambda: None, True),
+            ("値が 0 件の領域だけ", only(["ダミー社A", "ダミー社B"], ["ダミー領域3"]), False),
+            ("企業 × 領域で 0 件(ダミー社B に ダミー領域1 の値は無い)", only(["ダミー社B"], ["ダミー領域1"]), False),
+            ("領域を全部外す", only(["ダミー社A", "ダミー社B"], []), False),
+            ("企業を全部外す", only([], ["ダミー領域1"]), False),
+        ]
+        for name, change, shown in cases:
+            with self.subTest(case=name):
+                self.at = start(APP, "--dummy")
+                change()
+                self.assertEqual(len(self.at.exception), 0)
+                self.assertEqual(table_shown(), shown)
+                self.assertEqual(self.note_count(), 1)
+                (caption,) = [c.value for c in self.at.main.caption if self.DOMAIN_NOTE in c.value]
+                self.assertIn("R-4", caption)
+                self.assertIn("「未分類」", caption)
+        # 凡例(本文のいちばん下)には書かない(同じ文を 2 か所に置かない)
+        self.at = start(APP, "--dummy")
+        self.assertNotIn(self.DOMAIN_NOTE, self.at.main[len(self.at.main.children) - 1].value)
+
+    def test_詳細に領域が出る_別名_版つき_未分類(self):
+        table = main_table(self.at)
+        cases = [
+            (("Model-A1", "Reasoning", "High"), "Bench-Y", "ダミー領域2"),
+            (("Model-A2", "（なし）", "（なし）"), "Bench-V 2.1", "ダミー領域1"),
+            (("Model-A1", "Reasoning", "High"), "Bench-Z", "未分類"),
+        ]
+        for row, column, expected in cases:
+            with self.subTest(column=column):
+                select_cell(self.at, row_index_of(table, *row), column, "--dummy")
+                (detail,) = self.details()
+                self.assertEqual(list(detail.columns)[:3], ["モデル", "ベンチマーク", "領域"])
+                self.assertEqual(detail.iloc[0]["領域"], expected)
+
+    def test_領域の行のセルを選んでも詳細は出ない(self):
+        select_cell(self.at, 0, "Bench-X", "--dummy")
+        self.assertEqual(len(self.at.exception), 0)
+        self.assertEqual(self.details(), [])
+        self.assertTrue(any("スコアのセル" in c.value for c in self.at.caption))
+
+    def test_領域で絞った表でも_入れ替えた向きで同じ詳細が出る(self):
+        self.set_domains(["ダミー領域2", "未分類"])
+        self.at.radio(key="表の向き").set_value("モデルを行に")
+        rerun(self.at, "--dummy")
+        i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
+        select_cell(self.at, i, "Bench-Y", "--dummy")
+        (normal,) = self.details()
+        self.at.radio(key="表の向き").set_value("ベンチマークを行に")
+        rerun(self.at, "--dummy")
+        (table,) = tables(self.at, "ベンチマーク")
+        row_index = list(table["ベンチマーク"]).index("Bench-Y")
+        select_cell(self.at, row_index, "Model-A1 (Reasoning / High)", "--dummy")
+        (transposed,) = self.details()
+        self.assertEqual(transposed.values.tolist(), normal.values.tolist())
+        self.assertEqual(transposed.iloc[0]["スコア"], "1650 Elo")
+
+    def test_領域の絞り込みを変えると選んでいたセルの詳細は消える(self):
+        i = row_index_of(main_table(self.at), "Model-A1", "Reasoning", "High")
+        select_cell(self.at, i, "Bench-X", "--dummy")
+        self.assertEqual(len(self.details()), 1)
+        self.set_domains(["ダミー領域1", "ダミー領域2"])
+        self.assertEqual(self.details(), [])
+
+    def test_領域で絞っても_強中弱や順位の列や行は無い(self):
+        self.set_domains(["ダミー領域1"])
+        table = next(d.value for d in self.at.dataframe if d.key and d.key.startswith("表の選択:"))
+        for word in ("順位", "平均", "合計", "総合", "強", "弱"):
+            with self.subTest(word=word):
+                self.assertFalse(any(word in c for c in table.columns))
+                self.assertFalse(any(word in str(v) for v in table.iloc[:, 0]))
+
+
+@unittest.skipIf(AppTest is None, SKIP_REASON)
+class OfficialDomainsTest(OfficialDirMixin, unittest.TestCase):
+    """正式データを読むときの、領域の対応表(data/domains.json)の扱い。"""
+
+    def setUp(self):
+        super().setUp()
+        shutil.copytree(FIXTURES, self.official)
+
+    def test_未分類だけを選んで_0_件のときも_補足の文が合う(self):
+        # 対応表に載ったベンチマーク(Bench-X)だけのデータで、未分類を選ぶと 0 件になる
+        records = json.loads((FIXTURES / "ダミー社B.json").read_text(encoding="utf-8"))["records"]
+        shutil.rmtree(self.official)
+        self.write("ダミー社B.json", {"records": [r for r in records if r["benchmark"] == "Bench-X"]})
+        at = start(self.app)
+        at.multiselect(key="領域").set_value(["未分類"])
+        rerun(at)
+        self.assertEqual(len(at.exception), 0)
+        self.assertIn("選んだ領域に当てはまる値が、まだありません。", [i.value for i in at.info])
+        note = next(c.value for c in at.main.caption if "選んだ企業の正式データ" in c.value)
+        # 未分類は「対応表に載っていないベンチマーク」なので、「対応表に載ったベンチマークの値」とは書かない
+        self.assertNotIn("対応表に載った", note)
+        self.assertIn("選んだ領域に入るベンチマークの値が無い", note)
+
+    def test_対応表を読めれば表を出す(self):
+        at = select_all_domains(start(self.app))
+        self.assertEqual(len(at.exception), 0)
+        self.assertEqual(main_table(at).iloc[0].tolist()[4:8], ["ダミー領域1", "ダミー領域1", "ダミー領域2", "ダミー領域2"])
+
+    def test_対応表が無いと理由を出して表を出さない_未分類にしない(self):
+        self.domains.unlink()
+        at = start(self.app)
+        self.assert_no_table_and_no_dummy(at)
+        self.assertEqual(len(at.error), 1)
+        self.assertIn("data/domains.json", at.error[0].value)
+
+    def test_対応表が壊れていると理由を出して表を出さない(self):
+        data = json.loads(DOMAINS_FIXTURE.read_text(encoding="utf-8"))
+        data["benchmarks"][0]["domain"] = "知らない領域"
+        data["status"] = "decided"
+        self.domains.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        at = start(self.app)
+        self.assert_no_table_and_no_dummy(at)
+        self.assertEqual(len(at.error), 1)
+        self.assertIn("2 件", at.error[0].value)
+        (code,) = at.code
+        self.assertIn("知らない領域", code.value)
+        self.assertIn("`status`", code.value)
+
+    def test_壊れた_JSON_の対応表も理由を出して表を出さない(self):
+        self.domains.write_text("{壊れた", encoding="utf-8")
+        at = start(self.app)
+        self.assert_no_table_and_no_dummy(at)
+        (code,) = at.code
+        self.assertIn("domains.json: 読み込めない", code.value)
+
+    def test_領域の名前の中の_Markdown_の記号は_Markdown_の部品に渡さない(self):
+        name = "領域*A*_|$x$"
+        data = json.loads(DOMAINS_FIXTURE.read_text(encoding="utf-8"))
+        data["domains"][0] = name
+        for row in data["benchmarks"]:
+            if row["domain"] == "ダミー領域1":
+                row["domain"] = name
+        self.domains.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        at = start(self.app)
+        self.assertEqual(len(at.exception), 0)
+        self.assertEqual(main_table(at).iloc[0].tolist()[4], name)
+        for text in markdown_texts(at):
+            with self.subTest(text=text):
+                self.assertNotIn(name, text)
+        # 0 件の案内(ダミー領域3 だけを選ぶ)にも、領域の名前は入れない
+        at.multiselect(key="領域").set_value(["ダミー領域3"])
+        rerun(at)
+        self.assertEqual(len(at.exception), 0)
+        for text in markdown_texts(at):
+            self.assertNotIn("ダミー領域3", text)
 
 
 @unittest.skipIf(AppTest is None, SKIP_REASON)
@@ -499,7 +808,7 @@ class OfficialDataTest(OfficialDirMixin, unittest.TestCase):
         shutil.copytree(FIXTURES, self.official)
         at = start(self.app)
         self.assertEqual(len(at.exception), 0)
-        self.assertEqual(len(main_table(at)), 6)
+        self.assertEqual(len(model_rows(main_table(at))), 6)
         self.assertNotEqual(at.main[0].type, "warning")
         self.assertFalse(any("ダミーデータ" in t for t in markdown_texts(at)))
         self.assertTrue(any("data/official" in c.value and "12 件" in c.value for c in at.caption))
@@ -518,7 +827,7 @@ class OfficialDataTest(OfficialDirMixin, unittest.TestCase):
                 ]
             },
         )
-        at = start(self.app)
+        at = select_all_domains(start(self.app))  # 名前の列(未分類)も表に出す
         self.assertEqual(len(at.exception), 0)
         names = [provider, model, model2, bench]
         # Markdown として描かれる部品には、データ由来の名前が 1 つも入らない
@@ -529,8 +838,8 @@ class OfficialDataTest(OfficialDirMixin, unittest.TestCase):
         # 名前は、表の中にそのままの文字で入る
         table = main_table(at)
         self.assertEqual(set(list(table.columns)[4:]), {bench, "Bench-Z"})
-        self.assertEqual(set(table["モデル"]), {model, model2})
-        self.assertEqual(set(table["提供企業"]), {provider})
+        self.assertEqual(set(model_rows(table)["モデル"]), {model, model2})
+        self.assertEqual(set(model_rows(table)["提供企業"]), {provider})
         self.assertIn(f"最終取得日（企業ごと）：{provider} ", top_line(at))  # st.text(Markdown として解釈しない)
         # 未公表のセルを選んだときの名前も、Markdown ではなく st.text で出る
         select_cell(at, row_index_of(table, model, "（なし）", "（なし）"), "Bench-Z")
