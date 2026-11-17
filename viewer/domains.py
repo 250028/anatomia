@@ -49,6 +49,13 @@ class DomainMap:
         """絞り込みの選択肢。対応表の領域の順で、最後に「未分類」。"""
         return self.domains + (UNCLASSIFIED,)
 
+    @property
+    def initial_selection(self):
+        """画面を開いた直後に選んでおく領域。対応表の最初の領域 1 つだけ(対応表が空なら未分類)。
+        全部を選んだ状態で始めると、ベンチマークが多く(2026-11-17 の正式データで 87 列)、どちらの向きでも
+        表が画面の幅からはみ出し、横スクロールが出るため。1 つの領域なら、列が数個で幅に収まる。"""
+        return self.choices[:1]
+
     def domain_of(self, benchmark):
         """ベンチマーク名(版を除いたもの)の領域。完全一致で引き、無ければ「未分類」。"""
         return self._lookup.get(benchmark, UNCLASSIFIED)

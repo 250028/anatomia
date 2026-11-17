@@ -137,9 +137,13 @@ SIDEBAR_INITIAL_STATE = "collapsed"
 #   中のボタンと同じ大きさになるよう flex にする)。メニューは本文の帯より上に重なり(z-index)、開いている間は変形
 #   (transform)が無いので、position: fixed で画面に対して固定できる。メニューの見出しの行は高さを持ったまま残り、
 #   ボタンはその空きの中に入るので、メニューの中身の先頭とは重ならない
-# 頼る名前(stMain・stSidebar・data-collapsed・stSidebarResizeHandle・stSidebarCollapseButton・stExpandSidebarButton)は
+# - 本文の中身の左右の余白(stMainBlockContainer。layout="wide" で 1.67.0 の既定は左右 5rem = 90px〔文字 18px のとき〕)を
+#   1rem に詰め、表の幅を広くとる。1 つの領域の表(実データでモデル 19 行 × ベンチマーク 6 列)が、幅 1366px の画面で
+#   横スクロールなしに入るようにするため(左右の余白が 5rem のままだと、表の中の幅が約 90px 足りなかった。2026-11-17)。
+#   上の余白はそのまま(開く・閉じるボタンと本文の先頭が重ならないように)
+# 頼る名前(stMain・stMainBlockContainer・stSidebar・data-collapsed・stSidebarResizeHandle・stSidebarCollapseButton・stExpandSidebarButton)は
 # 1.67.0 の同梱コード(static/js/index.*.js)にある。版が変わって名前が変わると効かなくなるが、画面は壊れない
-# (メニューが本文を押して狭くする・幅を変えられる・ボタンが元の位置に戻る、元の動きに戻るだけ)
+# (メニューが本文を押して狭くする・幅を変えられる・ボタンが元の位置に戻る・本文の左右の余白が広い、元の動きに戻るだけ)
 SIDEBAR_CSS = f"""<style>
 main[data-testid="stMain"] {{
     position: absolute !important;
@@ -148,6 +152,10 @@ main[data-testid="stMain"] {{
     right: 0;
     bottom: 0;
     height: 100dvh;
+}}
+[data-testid="stMainBlockContainer"] {{
+    padding-left: 1rem !important;
+    padding-right: 1rem !important;
 }}
 section[data-testid="stSidebar"][data-collapsed="false"] {{
     width: {SIDEBAR_WIDTH_PX}px !important;
@@ -265,6 +273,9 @@ all_companies = companies(records)
 selected = st.sidebar.multiselect("企業で絞り込む", options=all_companies, default=all_companies, key="企業")
 
 # ---- 4-2. サイドバー：領域の絞り込み(企業の下) ----
+# 開いた直後は、対応表の最初の領域だけを選ぶ(domains.initial_selection)。全部を選んで始めると、ベンチマークが多く
+# (2026-11-17 の正式データで 87 列)、どちらの向きでも表が画面の幅からはみ出し、横スクロールが出るため。
+# 領域は 1 つずつ見ても、複数を選んでもよい(選んだ後は、利用者の選択を保つ)
 # 件数は、読み込んだ全企業のスコアの数。企業の絞り込みで数え直すと、選択肢の文字が変わり、
 # Streamlit 1.67.0 の multiselect は選択を選択肢の文字で覚えるため、選んでいた領域が外れるおそれがある
 domain_counts = count_by_domain(records, domains)
@@ -272,7 +283,7 @@ all_domains = list(domains.choices)
 selected_domains = st.sidebar.multiselect(
     "領域で絞り込む",
     options=all_domains,
-    default=all_domains,
+    default=list(domains.initial_selection),
     key="領域",
     format_func=lambda domain: f"{domain}（{domain_counts[domain]} 件）",
 )

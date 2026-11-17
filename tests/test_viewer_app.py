@@ -47,6 +47,17 @@ def start(app, *args):
     return rerun(AppTest.from_file(str(app), default_timeout=TIMEOUT), *args)
 
 
+# ダミーの対応表の領域の全部(対応表の順で、最後に未分類)
+ALL_DUMMY_DOMAINS = ["ダミー領域1", "ダミー領域2", "ダミー領域3", "未分類"]
+
+
+def select_all_domains(at, *args):
+    """領域を全部選んだ状態にして、実行し直す。開いた直後は対応表の最初の領域だけを選ぶので
+    (横スクロールを避けるため。viewer/domains.py の initial_selection)、全部の列の表を前提にするテストはこれを呼ぶ。"""
+    at.multiselect(key="領域").set_value(ALL_DUMMY_DOMAINS)
+    return rerun(at, *args)
+
+
 def tables(at, first_column):
     """先頭の列の見出しで、表を見分ける。モデル×ベンチマークは「提供企業」、最終取得日は「企業」、詳細は「モデル」。"""
     return [d.value for d in at.dataframe if list(d.value.columns)[:1] == [first_column]]
@@ -139,8 +150,10 @@ class OfficialDirMixin:
 
 @unittest.skipIf(AppTest is None, SKIP_REASON)
 class DummyDataTest(unittest.TestCase):
+    """全部の領域を選んだ状態の表(開いた直後の状態は InitialViewTest)。"""
+
     def setUp(self):
-        self.at = start(APP, "--dummy")
+        self.at = select_all_domains(start(APP, "--dummy"), "--dummy")
 
     def select(self, row_index, column_label):
         return select_cell(self.at, row_index, column_label, "--dummy")
@@ -466,6 +479,33 @@ class DummyDataTest(unittest.TestCase):
 
 
 @unittest.skipIf(AppTest is None, SKIP_REASON)
+class InitialViewTest(unittest.TestCase):
+    """開いた直後(何も操作していない)の見え方。横スクロールを避けるため、領域は対応表の最初の 1 つだけを選ぶ。"""
+
+    def setUp(self):
+        self.at = start(APP, "--dummy")
+
+    def test_開いた直後は対応表の最初の領域だけを選び_選択肢は全部ある(self):
+        widget = self.at.multiselect(key="領域")
+        self.assertEqual(widget.value, ["ダミー領域1"])
+        self.assertEqual(len(widget.options), 4)
+
+    def test_開いた直後の表は_最初の領域の列だけで_モデルの行は全部(self):
+        self.assertEqual(self.at.radio(key="表の向き").value, "モデルを行に")  # モデル 6・ベンチマーク 2
+        table = main_table(self.at)
+        self.assertEqual(list(table.columns)[4:], ["Bench-V 2.1", "Bench-W"])
+        self.assertEqual(table.iloc[0].tolist()[4:], ["ダミー領域1", "ダミー領域1"])
+        self.assertEqual(len(model_rows(table)), 6)  # 値の無いモデルの行も残す(未公表を見せる)
+
+    def test_本文の左右の余白を詰める_CSS_がある(self):
+        # 表の幅を少しでも広くとり、1 つの領域の表が 1366px の画面に横スクロールなしで入るようにする
+        (html,) = self.at.html
+        self.assertIn('[data-testid="stMainBlockContainer"]', html.proto.body)
+        self.assertIn("padding-left: 1rem", html.proto.body)
+        self.assertIn("padding-right: 1rem", html.proto.body)
+
+
+@unittest.skipIf(AppTest is None, SKIP_REASON)
 class DomainTest(unittest.TestCase):
     """領域での絞り込みと並び(ダミーの対応表 tests/fixtures/domains.json)。"""
 
@@ -473,7 +513,7 @@ class DomainTest(unittest.TestCase):
     EMPTY_DOMAIN = "選んだ領域に当てはまる値が、まだありません。"
 
     def setUp(self):
-        self.at = start(APP, "--dummy")
+        self.at = select_all_domains(start(APP, "--dummy"), "--dummy")
 
     def set_domains(self, domains):
         self.at.multiselect(key="領域").set_value(domains)
@@ -482,13 +522,12 @@ class DomainTest(unittest.TestCase):
     def details(self):
         return tables(self.at, "モデル")
 
-    def test_領域の選択肢は対応表の順で未分類が最後_件数を添え_最初は全部を選ぶ(self):
+    def test_領域の選択肢は対応表の順で未分類が最後_件数を添える(self):
         widget = self.at.multiselect(key="領域")
         self.assertEqual(widget.label, "領域で絞り込む")
         self.assertEqual(widget.options, [
             "ダミー領域1（3 件）", "ダミー領域2（7 件）", "ダミー領域3（0 件）", "未分類（2 件）",
         ])
-        self.assertEqual(widget.value, ["ダミー領域1", "ダミー領域2", "ダミー領域3", "未分類"])
 
     def test_件数は全企業のスコアの数で_企業で絞っても変わらず選択も保つ(self):
         # 件数を企業の絞り込みで変えると、選択肢の文字が変わり、選んでいた領域が外れるおそれがあるため、全企業で数える
@@ -662,7 +701,7 @@ class OfficialDomainsTest(OfficialDirMixin, unittest.TestCase):
         self.assertIn("選んだ領域に入るベンチマークの値が無い", note)
 
     def test_対応表を読めれば表を出す(self):
-        at = start(self.app)
+        at = select_all_domains(start(self.app))
         self.assertEqual(len(at.exception), 0)
         self.assertEqual(main_table(at).iloc[0].tolist()[4:8], ["ダミー領域1", "ダミー領域1", "ダミー領域2", "ダミー領域2"])
 
@@ -788,7 +827,7 @@ class OfficialDataTest(OfficialDirMixin, unittest.TestCase):
                 ]
             },
         )
-        at = start(self.app)
+        at = select_all_domains(start(self.app))  # 名前の列(未分類)も表に出す
         self.assertEqual(len(at.exception), 0)
         names = [provider, model, model2, bench]
         # Markdown として描かれる部品には、データ由来の名前が 1 つも入らない

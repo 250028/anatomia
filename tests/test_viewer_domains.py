@@ -56,6 +56,14 @@ class DomainMapFromDictTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(m.domain_of(name), UNCLASSIFIED)
 
+    def test_最初に選ぶのは対応表の最初の領域_1_つだけ(self):
+        # 全部の領域を最初から選ぶと、ベンチマークが多く(実データで 87 列)、どちらの向きでも表が横にはみ出すため
+        self.assertEqual(domain_map_from_dict(valid()).initial_selection, ("領域1",))
+
+    def test_対応表が空なら最初に選ぶのは未分類(self):
+        from viewer.domains import EMPTY
+        self.assertEqual(EMPTY.initial_selection, (UNCLASSIFIED,))
+
     def test_表の上の並び(self):
         m = domain_map_from_dict(valid())
         self.assertEqual([m.order(d) for d in m.choices], [0, 1, 2])
