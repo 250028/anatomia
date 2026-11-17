@@ -95,6 +95,13 @@ EMPTY_DOMAIN_NOTE = (
     "「未公表」（会社が、あるベンチマークの値を公表していないこと）とは意味が違います。"
 )
 
+# ベンチマークの説明についての固定の文(データ由来の文字は混ぜない)。説明は R-4 §2 をもとにしたもので(AIME・GPQA Diamond は一部を削っている)、R-4 が案・確認の途中のため、注記を出す
+DESCRIPTION_NOTE = (
+    "説明は案です（R-4：`docs/research/r4-benchmark-domains.md` §2 の「何を測るか」をもとにした、作成者の知識による下書きです。AIME と GPQA Diamond は R-4 の文から一部を削っていて、R-4 側の記述を直すまで、食い違いが残ります。R-4 の修正は、この PR に含めていません）。"
+    "出典の抄録・公式ページとの照合は一部で、論文の本文は未確認です。"
+)
+NO_DESCRIPTION = "このベンチマークの説明はまだありません（R-4 の 12 件にだけ、説明があります）。"
+
 MODELS_AS_ROWS = "モデルを行に"
 BENCHMARKS_AS_ROWS = "ベンチマークを行に"
 
@@ -371,6 +378,22 @@ elif pair is None:
 else:
     # 番号は、pair_at で行と列の値(ModelRow・BenchmarkColumn)に置き換え、セルは値で引く(viewer/grid.py の cell_at の注)
     row, column = pair
+    # ベンチマークの説明(領域の対応表の写し。説明は文字列なので Markdown に渡さず st.text、URL は詳細と同じリンクの列で出す)
+    description = domains.description_of(column.benchmark)
+    st.markdown("**このベンチマークが評価するもの**")
+    if description is None:
+        st.caption(NO_DESCRIPTION)
+    else:
+        st.text(description.text)
+        st.dataframe(
+            [{"説明の出典 URL": description.source_url}],
+            hide_index=True,
+            height="content",
+            row_height=ROW_HEIGHT,
+            column_config={"説明の出典 URL": st.column_config.LinkColumn("説明の出典 URL")},
+            placeholder="",
+        )
+        st.caption(DESCRIPTION_NOTE)
     items = detail_items(grid.cell_at(row, column), domains)
     if not items:
         st.info("選んだセルは「未公表」です（正式データに、この組の値がありません）。")

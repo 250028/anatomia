@@ -226,10 +226,12 @@ class DummyDataTest(unittest.TestCase):
         self.select(i, "Bench-W")
         parts = [self.at.main[i] for i in range(len(self.at.main.children))]
         self.assertEqual(
-            [e.type for e in parts], ["warning", "caption", "text", "dataframe", "markdown", "dataframe", "caption"]
+            [e.type for e in parts],
+            # Bench-W は説明が無いので、説明の欄は見出しと「まだありません」の 1 行だけ。その下に詳細の表
+            ["warning", "caption", "text", "dataframe", "markdown", "markdown", "caption", "dataframe", "caption"],
         )
-        self.assertEqual(list(parts[5].value.columns)[:1], ["モデル"])
-        self.assertIn("未公表", parts[6].value)
+        self.assertEqual(list(parts[7].value.columns)[:1], ["モデル"])
+        self.assertIn("未公表", parts[8].value)
 
     def test_メニューは最初は閉じる設定(self):
         # set_page_config の initial_sidebar_state は AppTest から読めないので、app.py の定数を読む
@@ -638,6 +640,58 @@ class DomainTest(unittest.TestCase):
                 (detail,) = self.details()
                 self.assertEqual(list(detail.columns)[:3], ["モデル", "ベンチマーク", "領域"])
                 self.assertEqual(detail.iloc[0]["領域"], expected)
+
+    def description_tables(self):
+        return [d for d in self.at.dataframe if list(d.value.columns) == ["説明の出典 URL"]]
+
+    def test_説明のあるベンチマークのセルを選ぶと_説明と出典が出て_案の注記が付く(self):
+        table = main_table(self.at)
+        select_cell(self.at, row_index_of(table, "Model-A1", "Reasoning", "High"), "Bench-X", "--dummy")
+        self.assertEqual(len(self.at.exception), 0)
+        # 説明は Markdown として解釈されない st.text で出る(*太字* や $x$ がそのまま残る)
+        self.assertIn("ダミーの説明(Bench-X)。*太字* や $x$ のような記号を含む。", [t.value for t in self.at.text])
+        (source,) = self.description_tables()
+        self.assertEqual(list(source.value["説明の出典 URL"]), ["https://example.com/dummy-bench-x"])
+        self.assertEqual(json.loads(source.proto.columns)["説明の出典 URL"]["type_config"]["type"], "link")
+        self.assertTrue(any("説明は案です" in c.value and "R-4" in c.value for c in self.at.caption))
+        self.assertFalse(any("説明はまだありません" in c.value for c in self.at.caption))
+        self.assertEqual(len(self.details()), 1)  # 詳細の表も出る
+
+    def test_説明は別名でも引ける(self):
+        table = main_table(self.at)
+        select_cell(self.at, row_index_of(table, "Model-A1", "Reasoning", "High"), "Bench-Y", "--dummy")
+        self.assertIn("ダミーの説明(Bench Y。別名で引く)。", [t.value for t in self.at.text])
+
+    def test_版つきの列を選んでも_版を除いた名前で説明が出る(self):
+        table = main_table(self.at)
+        self.assertIn("Bench-V 2.1", list(table.columns))  # 列の見出しは「名前 版」
+        select_cell(self.at, row_index_of(table, "Model-A2", "（なし）", "（なし）"), "Bench-V 2.1", "--dummy")
+        self.assertEqual(len(self.at.exception), 0)
+        self.assertIn("ダミーの説明(Bench-V。版つきの列でも出る)。", [t.value for t in self.at.text])
+        (source,) = self.description_tables()
+        self.assertEqual(list(source.value["説明の出典 URL"]), ["https://example.com/dummy-bench-v"])
+
+    def test_説明の無いベンチマークのセルを選ぶと_まだありませんと出る(self):
+        table = main_table(self.at)
+        # Bench-W(対応表にあるが説明なし)と、Bench-Z(対応表に無い)
+        for column in ("Bench-W", "Bench-Z"):
+            with self.subTest(column=column):
+                select_cell(self.at, row_index_of(table, "Model-A1", "Reasoning", "High"), column, "--dummy")
+                self.assertEqual(len(self.at.exception), 0)
+                self.assertTrue(any("このベンチマークの説明はまだありません" in c.value for c in self.at.caption))
+                self.assertEqual(self.description_tables(), [])
+                self.assertFalse(any("説明は案です" in c.value for c in self.at.caption))
+
+    def test_未公表のセルでも_ベンチマークの説明は出る(self):
+        table = main_table(self.at)
+        select_cell(self.at, row_index_of(table, "Model-A1", "Instruct", "（なし）"), "Bench-Y", "--dummy")
+        self.assertTrue(any("選んだセルは「未公表」" in i.value for i in self.at.info))
+        self.assertIn("ダミーの説明(Bench Y。別名で引く)。", [t.value for t in self.at.text])
+
+    def test_スコアのセルでないときは説明を出さない(self):
+        select_cell(self.at, 0, "Bench-X", "--dummy")
+        self.assertEqual(self.description_tables(), [])
+        self.assertFalse(any("ダミーの説明" in t.value for t in self.at.text))
 
     def test_領域の行のセルを選んでも詳細は出ない(self):
         select_cell(self.at, 0, "Bench-X", "--dummy")
