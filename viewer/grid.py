@@ -1,19 +1,24 @@
 """`ScoreRecord` の一覧から、「モデル×ベンチマーク」の表を作る整形。画面(app.py)が呼ぶ関数はここに集める。
 
-方針(docs/proposal.md §2-4 の原則 2・§2-3 のやらないこと):
+方針(docs/proposal.md §2-4 の原則 2・§2-3):
 - 値が無い組は「未公表」にする。読み込めない値は `records.load_official` が止めるので、表には出ない
-- 領域の列・強中弱・総合スコア・平均・順位は作らない。行の並びもスコアでは並べ替えない
+- ベンチマークの列は、領域の対応表(`viewer/domains.py`。R-4 で、全体が【案】)の領域で絞り込み、領域の順に並べる。
+  領域は、元の向きでは表の 1 行目(領域の行)に、入れ替えた向きでは 2 列目(領域の列)に、ベンチマークごとに出す
+- 総合スコア・平均・合計・順位・強中弱は作らない。行も列も、スコアでは並べ替えない。
+  §2-3 の「やらないこと」は単一の総合スコアによる順位づけで、領域単位の「強・中・弱」の算出方法は
+  §8 Q-6 で【未決】(§3-4 の暫定ルールは【案】)のため、モデル×領域に集約したセルも作らない
 - ロジック層なので `streamlit`・`requests`・`pandas` は import しない(tests/test_viewer_records.py で確かめる)
 
 app.py からの使い方(`load_official` は `viewer.records` から import する。ここでは再公開しない):
 
     from viewer.records import load_official
     records = load_official("data/official")      # RecordError なら .problems を画面に出す
+    domains = load_domains("data/domains.json")   # viewer.domains。DomainError なら .problems を画面に出す
     shown = filter_by_company(records, selected)  # selected=None で絞り込まない。企業名の集まり(文字列 1 つは TypeError)
-    grid = build_grid(shown)
+    grid = build_grid(shown, domains, selected_domains)  # selected_domains=None で領域では絞り込まない
     header, rows = table_header(grid), table_rows(grid)   # DataFrame(rows, columns=header) などへ
     # 選んだセルの詳細。位置の番号ではなく、行・列の値で引く(下の注を参照)
-    items = detail_items(grid.cell_at(row, column))       # row は grid.rows の要素、column は grid.columns の要素
+    items = detail_items(grid.cell_at(row, column), domains)  # row は grid.rows の要素、column は grid.columns の要素
     last = last_retrieved_by_company(records)     # {会社: 最終取得日}
 
 注:
@@ -32,12 +37,15 @@ Streamlit でのキャッシュの案(Streamlit の API・挙動は実機で確�
 from dataclasses import dataclass
 from datetime import date
 
+from viewer.domains import EMPTY as EMPTY_DOMAINS
 from viewer.records import ScoreRecord, retrieval_method_label
 
 NOT_PUBLISHED = "未公表"
 # 測定条件が付いた値の印。条件の中身は詳細(detail_items)で見せる
 CONDITION_MARK = "※"
 _NONE_TEXT = "（なし）"
+# 領域の行(元の向きの 1 行目)と、領域の列(入れ替えた向きの 2 列目)の見出し
+DOMAIN_LABEL = "領域"
 
 
 @dataclass(frozen=True)
@@ -92,6 +100,11 @@ class Grid:
     rows: tuple[ModelRow, ...]
     columns: tuple[BenchmarkColumn, ...]
     _cells: dict
+    column_domains: tuple[str, ...]  # `columns` と同じ並びの、各列の領域
+
+    def domain_of(self, column):
+        """列(`BenchmarkColumn`)の領域。この Grid に無い列なら ValueError。"""
+        return self.column_domains[self.columns.index(column)]
 
     def cell(self, row_index, column_index):
         """位置の番号で引く。表の描画の中で使う。画面の状態(選択したセル)には使わず、`cell_at` を使う。"""
@@ -129,17 +142,37 @@ def filter_by_company(records, selected):
     return [r for r in records if r.provider in selected]
 
 
-def build_grid(records):
-    """行(モデル×種類×推論モード)と列(ベンチマーク×版)を、並びが決まった形で作る。
-    並びは名前順で、スコアでは並べ替えない(順位を作らない)。"""
+def count_by_domain(records, domains):
+    """領域ごとのスコアの件数。キーは `domains.choices` の順(対応表の領域の順で、最後に未分類)。0 件の領域も出す。"""
+    counts = dict.fromkeys(domains.choices, 0)
+    for r in records:
+        counts[domains.domain_of(r.benchmark)] += 1
+    return counts
+
+
+def build_grid(records, domains=None, selected_domains=None):
+    """行(モデル×種類×推論モード)と列(ベンチマーク×版)を、並びが決まった形で作る。スコアでは並べ替えない(順位を作らない)。
+    - 行：名前順。`records` のすべてのモデル(領域で絞っても、絞った領域に値の無いモデルの行は残す。
+      行ごと消すと、その領域の値を 1 つも公表していないこと〔未公表〕が見えなくなるため)
+    - 列：領域の順(`domains.choices`。未分類は最後)、領域の中は名前順。`selected_domains`(領域名の集まり)を
+      渡すと、その領域のベンチマークの列だけにする(None なら絞り込まない。文字列 1 つは TypeError)
+    - `domains`：領域の対応表(`viewer.domains.DomainMap`)。None なら、すべて未分類"""
+    domains = EMPTY_DOMAINS if domains is None else domains
+    if isinstance(selected_domains, (str, bytes)):
+        raise TypeError("`selected_domains` は領域名の集まり(リスト・集合など)で、文字列 1 つではない")
+    selected = None if selected_domains is None else set(selected_domains)
     # None と文字列を比べられないので、並べ替えのキーでは None を空文字にする
     rows = sorted(
         {ModelRow(r.provider, r.model, r.model_type, r.mode) for r in records},
         key=lambda x: (x.provider, x.model, x.model_type or "", x.mode or ""),
     )
     columns = sorted(
-        {BenchmarkColumn(r.benchmark, r.benchmark_version) for r in records},
-        key=lambda x: (x.benchmark, x.benchmark_version or ""),
+        {
+            BenchmarkColumn(r.benchmark, r.benchmark_version)
+            for r in records
+            if selected is None or domains.domain_of(r.benchmark) in selected
+        },
+        key=lambda x: (domains.order(domains.domain_of(x.benchmark)), x.benchmark, x.benchmark_version or ""),
     )
     found = {}
     for r in records:
@@ -152,11 +185,15 @@ def build_grid(records):
         return Cell(tuple(sorted(found.get(key, ()), key=lambda r: (r.condition or "", r.score))))
 
     cells = {(row, col): in_cell((row, col)) for row in rows for col in columns}
-    return Grid(tuple(rows), tuple(columns), cells)
+    return Grid(tuple(rows), tuple(columns), cells, tuple(domains.domain_of(c.benchmark) for c in columns))
+
+
+# 元の向きの表で、モデルの行より左にある列(見出しの列)
+_ROW_HEADER = ["提供企業", "モデル", "種類", "推論モード"]
 
 
 def table_header(grid):
-    return ["提供企業", "モデル", "種類", "推論モード"] + [c.label for c in grid.columns]
+    return _ROW_HEADER + [c.label for c in grid.columns]
 
 
 def _shown_text(cell, not_published):
@@ -166,9 +203,11 @@ def _shown_text(cell, not_published):
 
 def table_rows(grid, not_published=NOT_PUBLISHED):
     """表示用の文字列の行。`table_header` と同じ並びで、スコアの列は `Cell.text`(未公表を含む)。
+    1 行目は領域の行(ベンチマークの列ごとに、その領域。入れ替えた向きの提供企業の行と釣り合う形)で、2 行目からがモデル。
     `not_published`：未公表のセルに出す文字列。画面が記号で出すときに渡す(「未公表」という意味は変わらない。
     `Cell.text`・`NOT_PUBLISHED` はそのまま)。既定は「未公表」の文字。"""
-    return [
+    domain_row = [DOMAIN_LABEL] + [""] * (len(_ROW_HEADER) - 1) + list(grid.column_domains)
+    return [domain_row] + [
         [row.provider, row.model, row.model_type or _NONE_TEXT, row.mode or _NONE_TEXT]
         + [_shown_text(grid.cell(i, j), not_published) for j in range(len(grid.columns))]
         for i, row in enumerate(grid.rows)
@@ -186,18 +225,19 @@ PROVIDER_ROW = "提供企業"
 
 
 def transposed_header(grid):
-    """ベンチマークを行にした表の見出し。1 列目はベンチマーク名の列、2 列目からはモデル(`ModelRow.label`)。"""
-    return [TRANSPOSED_FIRST_COLUMN] + [row.label for row in grid.rows]
+    """ベンチマークを行にした表の見出し。1 列目はベンチマーク名、2 列目は領域、3 列目からはモデル(`ModelRow.label`)。"""
+    return [TRANSPOSED_FIRST_COLUMN, DOMAIN_LABEL] + [row.label for row in grid.rows]
 
 
 def transposed_rows(grid, not_published=NOT_PUBLISHED):
     """ベンチマークを行にした表の行。1 行目は提供企業の行、2 行目からは 1 行が 1 つのベンチマーク。
-    j 行目(提供企業の行を除いて数える)の i 列目(1 列目を除いて数える)は、`table_rows(grid)[i]` の
-    ベンチマークの列の j 番目と同じセル。`not_published` は `table_rows` と同じ。"""
-    provider_row = [PROVIDER_ROW] + [row.provider for row in grid.rows]
+    2 列目は領域の列(元の向きの、モデルの行の提供企業の列と釣り合う形)。
+    j 行目(提供企業の行を除いて数える)の i 列目(1〜2 列目を除いて数える)は、`table_rows(grid)` のモデルの
+    i 行目(領域の行を除いて数える)のベンチマークの列の j 番目と同じセル。`not_published` は `table_rows` と同じ。"""
+    provider_row = [PROVIDER_ROW, ""] + [row.provider for row in grid.rows]
     return [provider_row] + [
-        [column.label] + [_shown_text(grid.cell(i, j), not_published) for i in range(len(grid.rows))]
-        for j, column in enumerate(grid.columns)
+        [column.label, domain] + [_shown_text(grid.cell(i, j), not_published) for i in range(len(grid.rows))]
+        for j, (column, domain) in enumerate(zip(grid.columns, grid.column_domains))
     ]
 
 
@@ -210,8 +250,8 @@ def label_conflicts(grid, transposed=False):
     """その向きの表で、同じ文字列になってしまう見出し(列の見出しと、行の見出し)を名前順で返す。空なら表を出せる。
     重なると、画面で選んだ列を見出しの文字列から引けず、人も見分けられないので、画面は表を出さずに止める。
     - モデルを行に：列の見出し(`table_header`。ベンチマークの版の書き方が混ざると重なり得る。`BenchmarkColumn.label` の注)
-    - ベンチマークを行に：列の見出し(`transposed_header`。別の企業に同じ名前・種類・推論モードのモデルがあると重なる)と、
-      行の見出し(提供企業の行とベンチマーク名)"""
+    - ベンチマークを行に：列の見出し(`transposed_header`。別の企業に同じ名前・種類・推論モードのモデルがあると重なる。
+      「領域」という名前のモデルも重なる)と、行の見出し(提供企業の行とベンチマーク名)"""
     if not transposed:
         return sorted(_duplicated(table_header(grid)))
     row_labels = [PROVIDER_ROW] + [column.label for column in grid.columns]
@@ -220,7 +260,7 @@ def label_conflicts(grid, transposed=False):
 
 def pair_at(grid, row_index, column_label, transposed=False):
     """表で選んだセル(行の番号、列の見出し)を、(`ModelRow`, `BenchmarkColumn`) の組にする。
-    スコアのセルでないとき(提供企業・モデルなどの列、提供企業の行、範囲外の番号、知らない見出し)は None。
+    スコアのセルでないとき(提供企業・モデルなどの列、領域の行・列、提供企業の行、範囲外の番号、知らない見出し)は None。
     `label_conflicts(grid, transposed)` が空であることが前提(見出しが重なっていると、どの列か決められない)。
     返した組で `grid.cell_at(row, column)` を引けば、どちらの向きでも同じセルになる。"""
     if transposed:
@@ -230,9 +270,10 @@ def pair_at(grid, row_index, column_label, transposed=False):
             return None
         return row, grid.columns[column_index]
     column = {c.label: c for c in grid.columns}.get(column_label)
-    if column is None or not 0 <= row_index < len(grid.rows):
+    model_index = row_index - 1  # 1 行目は領域の行
+    if column is None or not 0 <= model_index < len(grid.rows):
         return None
-    return grid.rows[row_index], column
+    return grid.rows[model_index], column
 
 
 def cell_position(grid, row, column, transposed=False):
@@ -240,8 +281,8 @@ def cell_position(grid, row, column, transposed=False):
     何行目・何列目にあるか(どちらも 0 から)。`pair_at` の逆。画面が未公表のセルに色を付けるときに使う。"""
     i, j = grid.rows.index(row), grid.columns.index(column)
     if transposed:
-        return 1 + j, 1 + i  # 1 行目は提供企業の行、1 列目はベンチマーク名の列
-    return i, len(table_header(grid)) - len(grid.columns) + j
+        return 1 + j, 2 + i  # 1 行目は提供企業の行、1〜2 列目はベンチマーク名と領域の列
+    return 1 + i, len(_ROW_HEADER) + j  # 1 行目は領域の行
 
 
 def prefers_transposed(grid):
@@ -250,15 +291,18 @@ def prefers_transposed(grid):
     return len(grid.columns) > len(grid.rows)
 
 
-def detail_items(cell):
+def detail_items(cell, domains=None):
     """選んだセルの詳細。セルの値ごと(測定条件違いなら複数)に、「(項目名, 表示する文字列)」の
     リストを作り、それを並べたリストを返す。未公表のセルは空のリスト。出典 URL はそのまま入るので、app.py でリンクにする。
+    「領域」は `domains`(`viewer.domains.DomainMap`。None なら未分類)で引く。
     `raw_value`・`as_of`・`benchmark_description` は出さない(MVP の範囲外)。"""
+    domains = EMPTY_DOMAINS if domains is None else domains
     details = []
     for r in cell.records:
         items = [
             ("モデル", ModelRow(r.provider, r.model, r.model_type, r.mode).label),
             ("ベンチマーク", BenchmarkColumn(r.benchmark, r.benchmark_version).label),
+            ("領域", domains.domain_of(r.benchmark)),
             ("スコア", format_score(r)),
             ("測定条件", r.condition or "記載なし"),
             ("出典 URL", r.source_url),
