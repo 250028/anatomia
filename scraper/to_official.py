@@ -70,6 +70,20 @@ _PROVIDER = re.compile(r"\w[\w ._-]*")
 STRING_KEYS = ["model", "provider", "benchmark", "raw_value", "source_url", "retrieved_by"]
 OPTIONAL_STRING_KEYS = ["model_type", "mode", "benchmark_version", "unit", "condition", "as_of"]
 
+# 会社ごとの対応表: 取得元の名前 → (benchmark, benchmark_version)。取得スクリプトの出力 JSON を変換するとき、benchmark_version が空の件にだけ当てる。
+# xAI・OpenAI・Google の正式データと同じ、名前と版を分ける形にそろえる暫定(#57 の相談。名前に含めるか別の項目にするかの最終的な決め方は §3-3・R-4・R-5)。
+# 末尾の数字から自動で分けない: 版が小数点のない名前(Finance Agent v2 など)があり、機械的に分けると誤るため。ここにない名前は、取得元の表記のまま持つ(版は null)。
+# 足すときは、ほかの会社の同じベンチマークの名前と版を見て、書き方(大文字小文字・ハイフン・アポストロフィ)をそろえる(§3-3 の正規化の範囲)。値(score・raw_value など)は変えない。
+BENCHMARK_NAMES_BY_PROVIDER = {
+    "DeepSeek": {
+        "DeepSWE v1.1": ("DeepSWE", "v1.1"),
+        "Terminal-Bench 2.1": ("Terminal-Bench", "2.1"),
+        "Terminal Bench 2.1": ("Terminal-Bench", "2.1"),
+        "Terminal-Bench 3.0": ("Terminal-Bench", "3.0"),
+        "Terminal-Bench 4.0": ("Terminal-Bench", "4.0"),
+    },
+}
+
 
 class ConversionError(ValueError):
     """入力が §3-3 の形になっていない。黙って直さず、どこが違うかを示して止める。"""
@@ -148,6 +162,7 @@ def read_scraper_json(path):
         raise ConversionError(f"{path.name}: {{\"records\": [...]}} の形でない")
     records = []
     bad_as_of = []
+    renamed = []
     for i, rec in enumerate(data["records"], 1):
         where = f"{path.name} {i} 件目"
         if not isinstance(rec, dict):
@@ -176,7 +191,17 @@ def read_scraper_json(path):
         if out["as_of"] is not None and not _is_date(out["as_of"]):
             bad_as_of.append(out["as_of"])
             out["as_of"] = None
+        table = BENCHMARK_NAMES_BY_PROVIDER.get(out["provider"], {})
+        if out["benchmark_version"] is None and out["benchmark"] in table:
+            renamed.append(out["benchmark"])
+            out["benchmark"], out["benchmark_version"] = table[out["benchmark"]]
         records.append(out)
+    if renamed:
+        warnings.warn(
+            f"{path.name}: 対応表(BENCHMARK_NAMES_BY_PROVIDER)で、名前と版を分けた {len(renamed)} 件({', '.join(sorted(set(renamed)))})。"
+            "値(score・raw_value など)は変えていない。名前に含めるか別の項目にするかの最終的な決め方は未決(§3-3・R-4・R-5)",
+            stacklevel=2,
+        )
     if bad_as_of:
         warnings.warn(
             f"{path.name}: as_of が YYYY-MM-DD でない {len(bad_as_of)} 件は null にした(例: {bad_as_of[0]!r})。年月だけの日付の書き方は §3-3 にない",
